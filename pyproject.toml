@@ -1,0 +1,21 @@
+[project]
+name = "hatpin"
+version = "0.1.0"
+description = "Semi-deterministic workflow engine for LLM-based agents"
+requires-python = ">=3.11"
+dependencies = [
+    "corvidae @ git+https://github.com/schuyler/corvidae.git",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-timeout",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+timeout = 10
