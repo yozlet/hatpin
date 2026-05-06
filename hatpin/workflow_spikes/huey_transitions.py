@@ -1,53 +1,39 @@
 """Huey + ``transitions`` spike: tick runner, checkpoint I/O, queue hooks.
 
-**Spike checkpoint v1** (JSON object, one file per run under :func:`spike_state_dir`):
+**Spike checkpoint v1** — one JSON object per run under :func:`spike_state_dir`
+(default ``.hatpin/spikes/huey_transitions``, override ``HATPIN_SPIKE_STATE_DIR``;
+Huey uses ``huey.sqlite3`` in that directory).
 
-.. list-table::
-   :widths: 20 15 65
+Required / optional fields:
 
-   * - Field
-     - Required
-     - Meaning
-   * - ``format_version``
-     - yes
-     - Schema epoch. Only ``1`` is supported; any other value → :exc:`ValueError`
-       (no migration in the spike).
-   * - ``graph_version``
-     - yes
-     - Must equal :data:`GRAPH_VERSION` in code; mismatch → :exc:`ValueError`
-       (fail-closed; no silent upgrade).
-   * - ``run_id``
-     - yes
-     - Logical id; must match the filename run and :func:`validate_spike_run_id`.
-   * - ``state_id``
-     - yes
-     - One of ``planning``, ``coding``, ``verify``, ``waiting_external``, ``done``.
-   * - ``updated_at``
-     - yes
-     - ISO-8601 UTC timestamp string (spike writes Z suffix).
-   * - ``context``
-     - yes
-     - Object with optional ``summaries`` / ``facts`` dicts (two-channel
-       :class:`~hatpin.context.WorkflowContext`; tool logs omitted).
-   * - ``pause``
-     - yes
-     - ``null`` when not paused, or an object with **exactly** ``reason``,
-       ``pause_key``, ``stage_name``, ``summary`` (all strings) when paused.
-   * - ``spike``
-     - no
-     - Optional bag for spike-only markers (e.g. retry simulation).
+- ``format_version`` (required int): schema epoch. Only ``1`` is supported;
+  anything else raises ``ValueError`` (no migration in the spike).
+- ``graph_version`` (required int): must equal :data:`GRAPH_VERSION`; mismatch
+  raises ``ValueError`` (fail-closed; no silent upgrade).
+- ``run_id`` (required str): logical id; must match the file’s run and pass
+  :func:`~hatpin.workflow_spikes.state_paths.validate_spike_run_id`.
+- ``state_id`` (required str): one of ``planning``, ``coding``, ``verify``,
+  ``waiting_external``, ``done``.
+- ``updated_at`` (required str): non-empty ISO-8601 UTC timestamp (spike uses
+  a ``Z`` suffix).
+- ``context`` (required object): maps with optional ``summaries`` / ``facts``
+  sub-objects (two-channel :class:`~hatpin.context.WorkflowContext`; tool logs
+  omitted).
+- ``pause`` (required): JSON ``null`` unless ``state_id`` is
+  ``waiting_external``. In the waiting state, an object with **exactly** the
+  keys ``reason``, ``pause_key``, ``stage_name``, ``summary`` (all strings).
+- ``spike`` (optional object): spike-only markers (e.g. retry simulation).
 
-**Versioning:** unsupported ``format_version`` or ``graph_version`` always
-raise :exc:`ValueError`. Corrupt or non-object JSON raises :exc:`ValueError`.
-Unknown top-level keys in the checkpoint object raise :exc:`ValueError`
-(fail-closed for evaluation).
+Load path rejects corrupt JSON, non-object roots, unknown **top-level** keys,
+``pause`` shape violations, and ``run_id`` / version mismatches — all
+``ValueError`` (fail-closed). :func:`create_run` and each checkpoint save run the
+same v1 validation immediately before writing so invalid state cannot be
+persisted.
 
-**Cleanup:** default is to **keep** the JSON when ``state_id`` is ``done`` so
-operators can inspect runs. Set ``HATPIN_SPIKE_DELETE_CHECKPOINT_ON_DONE`` to
-``1`` / ``true`` / ``yes`` to remove the checkpoint file after a terminal write
-(still off by default to avoid surprise data loss). Operators may delete
-``HATPIN_SPIKE_STATE_DIR`` (or the default ``.hatpin/spikes/huey_transitions``)
-between eval runs; Huey SQLite lives beside checkpoints in that directory.
+**Cleanup:** by default the checkpoint file **remains** when ``state_id`` is
+``done`` for inspection. Set ``HATPIN_SPIKE_DELETE_CHECKPOINT_ON_DONE`` to
+``1`` / ``true`` / ``yes`` to delete the JSON after that terminal write (off by
+default). Operators may delete the whole spike state directory between eval runs.
 """
 
 from __future__ import annotations
@@ -61,7 +47,7 @@ from collections.abc import Coroutine
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar, cast
 
 from hatpin.context import WorkflowContext
 from hatpin.stage import Stage
@@ -201,6 +187,83 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _spike_delete_checkpoint_after_done_requested() -> bool:
+    flag = os.environ.get("HATPIN_SPIKE_DELETE_CHECKPOINT_ON_DONE", "")
+    return flag.strip().lower() in ("1", "true", "yes")
+
+
+def _validate_pause_object(pause: dict[str, Any]) -> None:
+    if set(pause) != _PAUSE_KEYS:
+        raise ValueError(
+            f"pause object must have exactly keys {sorted(_PAUSE_KEYS)!r}, "
+            f"got {sorted(pause)!r}"
+        )
+    for key in _PAUSE_KEYS:
+        val = pause.get(key)
+        if not isinstance(val, str):
+            raise ValueError(f"pause.{key} must be a string")
+
+
+def validate_spike_checkpoint_v1(checkpoint: Any, *, expect_run_id: str) -> None:
+    """Fail closed on malformed spike checkpoint payloads (evaluation / tests).
+
+    Callers normally load via :func:`_load_checkpoint`, which parses JSON and
+    invokes this. Unsupported ``format_version`` / ``graph_version`` raise
+    :exc:`ValueError` with the same messages as :func:`run_tick` historically used.
+    """
+    validate_spike_run_id(expect_run_id)
+    if not isinstance(checkpoint, dict):
+        raise ValueError("Checkpoint must be a JSON object")
+    unknown = set(checkpoint) - _CHECKPOINT_TOP_KEYS
+    if unknown:
+        raise ValueError(f"Checkpoint has unknown keys: {sorted(unknown)!r}")
+
+    if checkpoint.get("format_version") != FORMAT_VERSION:
+        raise ValueError("Unsupported checkpoint format_version")
+    if checkpoint.get("graph_version") != GRAPH_VERSION:
+        raise ValueError("Unsupported checkpoint graph_version")
+
+    rid = checkpoint.get("run_id")
+    if rid != expect_run_id:
+        raise ValueError(
+            "Checkpoint run_id does not match load path: "
+            f"expected {expect_run_id!r}, found {rid!r}"
+        )
+
+    state_id = checkpoint.get("state_id")
+    if state_id not in _KNOWN_STATE_IDS:
+        raise ValueError(f"Unknown state_id: {state_id!r}")
+
+    updated_at = checkpoint.get("updated_at")
+    if not isinstance(updated_at, str) or not updated_at.strip():
+        raise ValueError("Checkpoint updated_at must be a non-empty string")
+
+    ctx = checkpoint.get("context")
+    if not isinstance(ctx, dict):
+        raise ValueError("Checkpoint context must be an object")
+    for ck in ("summaries", "facts"):
+        if ck in ctx and not isinstance(ctx[ck], dict):
+            raise ValueError(f"Checkpoint context.{ck} must be an object")
+
+    if "pause" not in checkpoint:
+        raise ValueError('Checkpoint missing required key "pause"')
+
+    pause = checkpoint["pause"]
+    if state_id == "waiting_external":
+        if not isinstance(pause, dict):
+            raise ValueError("state_id waiting_external requires pause object")
+        _validate_pause_object(pause)
+    elif pause is not None:
+        raise ValueError(
+            "pause must be null when state_id is not waiting_external "
+            f"(state_id={state_id!r})"
+        )
+
+    spike_bag = checkpoint.get("spike")
+    if spike_bag is not None and not isinstance(spike_bag, dict):
+        raise ValueError("Checkpoint spike must be an object when present")
+
+
 def _checkpoint_path(run_id: str) -> Path:
     safe = safe_spike_run_segment(run_id)
     return spike_state_dir() / f"{safe}.json"
@@ -240,17 +303,33 @@ def create_run(run_id: str, *, initial_context: WorkflowContext | None = None) -
         "context": _serialize_context(ctx),
         "pause": None,
     }
+    validate_spike_checkpoint_v1(checkpoint, expect_run_id=run_id)
     _atomic_write_json(_checkpoint_path(run_id), checkpoint)
 
 
 def _load_checkpoint(run_id: str) -> dict[str, Any]:
+    validate_spike_run_id(run_id)
     path = _checkpoint_path(run_id)
-    return json.loads(path.read_text())
+    try:
+        raw = path.read_text()
+    except FileNotFoundError:
+        raise
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Checkpoint is not valid JSON ({path}): {exc}") from exc
+    validate_spike_checkpoint_v1(data, expect_run_id=run_id)
+    return data
 
 
 def _save_checkpoint(run_id: str, checkpoint: dict[str, Any]) -> None:
+    validate_spike_run_id(run_id)
     checkpoint["updated_at"] = _now_iso()
-    _atomic_write_json(_checkpoint_path(run_id), checkpoint)
+    validate_spike_checkpoint_v1(checkpoint, expect_run_id=run_id)
+    path = _checkpoint_path(run_id)
+    _atomic_write_json(path, checkpoint)
+    if checkpoint.get("state_id") == "done" and _spike_delete_checkpoint_after_done_requested():
+        path.unlink(missing_ok=True)
 
 
 class _RunModel:
@@ -366,6 +445,7 @@ _HUEY_BY_DB: dict[str, Any] = {}
 
 def enqueue_tick(run_id: str) -> None:
     """Enqueue a tick via Huey (SQLite)."""
+    validate_spike_run_id(run_id)
     huey = _get_huey()
     run_workflow_tick = _get_tick_task(huey)
 
@@ -405,17 +485,10 @@ def _get_tick_task(huey):
 
 def run_tick(run_id: str) -> TickOutcome:
     checkpoint = _load_checkpoint(run_id)
-    if checkpoint.get("format_version") != FORMAT_VERSION:
-        raise ValueError("Unsupported checkpoint format_version")
-    if checkpoint.get("graph_version") != GRAPH_VERSION:
-        raise ValueError("Unsupported checkpoint graph_version")
 
     ctx = _deserialize_context(checkpoint.get("context", {}))
-    state_id = checkpoint.get("state_id")
-    if state_id not in ("planning", "coding", "verify", "waiting_external", "done"):
-        raise ValueError(f"Unknown state_id: {state_id!r}")
-
-    prev_state: StateId = state_id
+    state_id = checkpoint["state_id"]
+    prev_state: StateId = cast(StateId, state_id)
 
     # Simulated retryable failure (stage-level), persisted to avoid failing on
     # every retry attempt.

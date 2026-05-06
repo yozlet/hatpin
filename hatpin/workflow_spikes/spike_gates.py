@@ -99,6 +99,9 @@ def resolve_gate_for_pause_key(pause_key: str) -> WorkflowGate:
 def spike_signal_resume(run_id: str) -> None:
     """Signal release using the same ``pause_key`` / resolver path as :func:`run_tick`.
 
+    Raises :exc:`ValueError` if *run_id* is not allowed for the spike (same rules
+    as :func:`~hatpin.workflow_spikes.state_paths.validate_spike_run_id`).
+
     Writes the external file signal via :func:`resolve_gate_for_pause_key`
     (``resume.flag:…``). Tests that patch ``resolve_gate_for_pause_key`` or
     ``ExternalFileWorkflowGate`` consistently affect both polling and explicit

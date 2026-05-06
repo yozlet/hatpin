@@ -10,7 +10,7 @@
 **Scope:** Minimal prototype (“tracer bullet”) to validate the Huey+`transitions` hybrid architecture at **stage-level durability**.  
 **Non-goal:** Productionize deferred stages 12–14. This is an evaluation/prototype.
 
-**Status (2026-05-06):** Slices A–D and roadmap **Tasks 1–3** are implemented in the spike (`hatpin/workflow_spikes/`). **Tasks 4–5** remain. See [`docs/phase2-huey-transitions-findings.md`](./phase2-huey-transitions-findings.md).
+**Status (2026-05-06):** Slices A–D and roadmap **Tasks 1–4** are implemented in the spike (`hatpin/workflow_spikes/`). **Task 5** remains. See [`docs/phase2-huey-transitions-findings.md`](./phase2-huey-transitions-findings.md).
 
 ---
 
@@ -127,7 +127,7 @@ Even if we do not implement the full `WorkflowGate` protocol, the spike should m
 
 At minimum, represent pause as a persisted checkpoint state with:
 
-- `pause_reason` (e.g. `"external_condition"` or `"human_gate"`)
+- a stable **reason** string for why the workflow is blocked (the spike persists this as `pause.reason`; it corresponds to the spec’s informal “pause_reason” / `StageOutcome` value, e.g. `"blocked"`)
 - `pause_key` (string) identifying what will release it (e.g. `"resume.flag:<run_id>"`)
 
 ---
@@ -208,11 +208,8 @@ If the spike is promising, do the following in this order (stop early if any ste
 - [x] **Task 3 — Make pause/resume align with ADR 0001 (`WorkflowGate`)**  
   Done (spike): `hatpin/workflow_gate.py`, `hatpin/workflow_spikes/spike_gates.py`, persisted `pause` + `pause_key`, `run_tick` / `resume` through `resolve_gate_for_pause_key`; `checkpoint["pause"]` cleared on successful release; `safe_spike_run_segment` for path safety. Stdin gate exists but is not selectable via persisted `pause_key` in this slice (only `resume.flag:`).
 
-- [ ] **Task 4 — Tighten the persistence contract and schema/versioning**  
-  - define canonical `run_id` format
-  - define checkpoint location and cleanup policy
-  - define fail-closed behavior for `graph_version` mismatch + migration strategy
-  - standardize `pause_reason` / `pause_key` in the checkpoint
+- [x] **Task 4 — Tighten the persistence contract and schema/versioning**  
+  Done: canonical `run_id` via `validate_spike_run_id` / `safe_spike_run_segment` (ASCII + length cap, no `..`, shared by checkpoints, gates, `resume`); spike checkpoint **v1** field contract and fail-closed load validation in `validate_spike_checkpoint_v1` / `_load_checkpoint` (unknown top-level keys, pause shape, `format_version` / `graph_version` vs code constants — **no silent migration**); default **keep** JSON at `done`, optional delete via `HATPIN_SPIKE_DELETE_CHECKPOINT_ON_DONE`; docs in `huey_transitions` module string + findings §2.2 / persistence bullet. Persisted pause uses **`reason`** (not `pause_reason`) with `pause_key`, `stage_name`, `summary`.
 
 - [ ] **Task 5 — Clarify and encode retry semantics**  
   Define retryable vs terminal failures; implement Huey-native retries/backoff (instead of spike-only retry loops) and ensure idempotency expectations are explicit.

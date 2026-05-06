@@ -110,6 +110,39 @@ def test_spike_create_run_and_tick_persists_context_and_state(tmp_path, monkeypa
     assert payload["context"]["facts"]["issue_key"] == "o/r#1"
     # tool logs are intentionally not persisted in the spike payload
     assert "tool_logs" not in payload["context"]
+    assert payload.get("pause") is None
+
+
+def test_spike_checkpoint_deleted_on_done_when_env_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("HATPIN_SPIKE_DELETE_CHECKPOINT_ON_DONE", "true")
+
+    from hatpin.workflow_spikes.huey_transitions import create_run, run_tick
+
+    create_run("r-del-done")
+    checkpoint = tmp_path / "r-del-done.json"
+    assert checkpoint.is_file()
+
+    for _ in range(8):
+        out = run_tick("r-del-done")
+        if out.state_id == "done" and out.is_terminal:
+            break
+    else:
+        raise AssertionError("expected terminal done")
+
+    assert not checkpoint.is_file()
+
+
+def test_enqueue_tick_rejects_invalid_run_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import create_run, enqueue_tick, get_spike_huey
+
+    create_run("ok")
+    huey = get_spike_huey()
+    huey.immediate = True
+    with pytest.raises(ValueError, match="disallowed|empty"):
+        enqueue_tick("bad id")
 
 
 def test_spike_escape_hatch_round_trip(tmp_path, monkeypatch):
@@ -159,6 +192,10 @@ def test_spike_pause_and_resume_signal(tmp_path, monkeypatch):
     resume("r2")
     out_resumed = run_tick("r2")
     assert out_resumed.paused is False
+
+    final = json.loads((tmp_path / "r2.json").read_text())
+    assert final.get("pause") is None
+    assert final["state_id"] != "waiting_external"
 
 
 def test_spike_huey_enqueue_tick_immediate_mode(tmp_path, monkeypatch):

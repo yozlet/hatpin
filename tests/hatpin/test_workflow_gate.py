@@ -157,7 +157,12 @@ def test_checkpoint_includes_pause_key_when_paused(tmp_path, monkeypatch):
 
     payload = json.loads((tmp_path / "r-pause-key.json").read_text())
     assert payload["state_id"] == "waiting_external"
-    assert payload.get("pause", {}).get("pause_key") == external_file_pause_key("r-pause-key")
+    pause = payload["pause"]
+    assert set(pause) == {"reason", "pause_key", "stage_name", "summary"}
+    assert isinstance(pause["reason"], str)
+    assert isinstance(pause["summary"], str)
+    assert pause["stage_name"] == "coding"
+    assert pause["pause_key"] == external_file_pause_key("r-pause-key")
 
 
 def test_pause_cleared_after_resume_proceed_advances_state(tmp_path, monkeypatch):
@@ -227,10 +232,139 @@ def test_bad_run_id_rejected_no_escape_from_spike_dir(tmp_path, monkeypatch):
 
     from hatpin.workflow_spikes.huey_transitions import create_run
 
-    with pytest.raises(ValueError, match="parent-directory|empty"):
+    with pytest.raises(ValueError, match="parent-directory|disallowed"):
         create_run("../evil")
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_run_tick_rejects_invalid_run_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import create_run, run_tick
+
+    create_run("ok-id")
+    with pytest.raises(ValueError, match="disallowed|empty"):
+        run_tick("ok-id/bad")
+
+
+def test_resume_rejects_invalid_run_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import resume
+
+    with pytest.raises(ValueError, match="disallowed|empty"):
+        resume("no/slash")
+
+
+def test_run_tick_rejects_checkpoint_graph_version_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import create_run, run_tick
+
+    create_run("gv-mismatch")
+    path = tmp_path / "gv-mismatch.json"
+    payload = json.loads(path.read_text())
+    payload["graph_version"] = 999
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="Unsupported checkpoint graph_version"):
+        run_tick("gv-mismatch")
+
+
+def test_run_tick_rejects_checkpoint_format_version_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import create_run, run_tick
+
+    create_run("fv-mismatch")
+    path = tmp_path / "fv-mismatch.json"
+    payload = json.loads(path.read_text())
+    payload["format_version"] = 0
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="Unsupported checkpoint format_version"):
+        run_tick("fv-mismatch")
+
+
+def test_run_tick_rejects_corrupt_checkpoint_json(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import create_run, run_tick
+
+    create_run("bad-json")
+    (tmp_path / "bad-json.json").write_text("{not valid json")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        run_tick("bad-json")
+
+
+def test_run_tick_rejects_checkpoint_unknown_top_level_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import create_run, run_tick
+
+    create_run("extra-key")
+    path = tmp_path / "extra-key.json"
+    payload = json.loads(path.read_text())
+    payload["surprise"] = 1
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="unknown keys"):
+        run_tick("extra-key")
+
+
+def test_run_tick_rejects_checkpoint_stale_pause_while_not_waiting(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import create_run, run_tick
+    from hatpin.workflow_spikes.spike_gates import external_file_pause_key
+
+    create_run("stale-pause")
+    path = tmp_path / "stale-pause.json"
+    payload = json.loads(path.read_text())
+    payload["pause"] = {
+        "reason": "blocked",
+        "pause_key": external_file_pause_key("stale-pause"),
+        "stage_name": "coding",
+        "summary": "x",
+    }
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="pause must be null"):
+        run_tick("stale-pause")
+
+
+def test_checkpoint_save_rejects_invalid_payload_without_writing(tmp_path, monkeypatch):
+    """Spike refuses to persist checkpoints that would fail v1 load validation."""
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import _save_checkpoint, create_run, _load_checkpoint
+    from hatpin.workflow_spikes.spike_gates import external_file_pause_key
+
+    create_run("save-guard")
+    good = _load_checkpoint("save-guard")
+    path = tmp_path / "save-guard.json"
+    before_bytes = path.read_bytes()
+
+    invalid = dict(good)
+    invalid["pause"] = {
+        "reason": "blocked",
+        "pause_key": external_file_pause_key("save-guard"),
+        "stage_name": "coding",
+        "summary": "x",
+    }
+
+    with pytest.raises(ValueError, match="pause must be null"):
+        _save_checkpoint("save-guard", invalid)
+
+    assert path.read_bytes() == before_bytes
+
+
+def test_validate_spike_run_id_length_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import create_run
+    from hatpin.workflow_spikes.state_paths import SPIKE_RUN_ID_MAX_LEN
+
+    long_id = "x" * (SPIKE_RUN_ID_MAX_LEN + 1)
+    with pytest.raises(ValueError, match="maximum length"):
+        create_run(long_id)
 
 
 def test_run_tick_rejects_tampered_pause_key(tmp_path, monkeypatch):
@@ -250,7 +384,7 @@ def test_run_tick_rejects_tampered_pause_key(tmp_path, monkeypatch):
     payload["pause"]["pause_key"] = "resume.flag:../../etc/passwd"
     bad_path.write_text(json.dumps(payload))
 
-    with pytest.raises(ValueError, match="parent-directory|Invalid"):
+    with pytest.raises(ValueError, match="parent-directory|Invalid|disallowed"):
         run_tick("r-tamper")
 
 

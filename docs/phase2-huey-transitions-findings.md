@@ -5,7 +5,7 @@
 **Spike code:** `hatpin/workflow_spikes/huey_transitions.py`, `hatpin/workflow_spikes/spike_gates.py`, `hatpin/workflow_spikes/state_paths.py`, `hatpin/workflow_gate.py`  
 **Spike tests:** `tests/hatpin/test_spike_huey_transitions.py`, `tests/hatpin/test_workflow_gate.py`
 
-**Roadmap status:** **Tasks 1–3** (real Huey queue execution, async bridge, ADR-shaped gates) are **done** in the spike. **Task 4** (persistence contract / schema) and **Task 5** (Huey-native retries) are **next** — see spec §9.
+**Roadmap status:** **Tasks 1–4** (including persistence contract / schema / `run_id` rules) are **done** in the spike. **Task 5** (Huey-native retries) is **next** — see spec §9.
 
 ## 1. What we built (and why)
 
@@ -45,8 +45,9 @@ This keeps the test surface small while still validating:
 
 **Decision:** checkpoint is a JSON file under a spike directory:
 
-- default: `.hatpin/spikes/huey_transitions/<safe-run-segment>.json` (segment from `run_id` via `safe_spike_run_segment`)
+- default: `.hatpin/spikes/huey_transitions/<run_id>.json` (same string as `run_id` after `validate_spike_run_id`; must be filename-safe — see `hatpin/workflow_spikes/state_paths.py`)
 - override: `HATPIN_SPIKE_STATE_DIR` (tests use a temp directory)
+- Huey SQLite queue: `huey.sqlite3` in that same directory
 
 **Reasoning:**
 
@@ -55,6 +56,8 @@ This keeps the test surface small while still validating:
 - avoids introducing a second durable store for the spike (Huey already uses SQLite)
 
 **Notable policy:** persisted context includes **only** `summaries` and `facts`; `tool_logs` are intentionally omitted (secrets risk + size).
+
+**Persistence contract (Task 4):** spike checkpoint **v1** is documented in the `hatpin/workflow_spikes/huey_transitions.py` module docstring and validated on load by `validate_spike_checkpoint_v1` (fail-closed: bad JSON, unknown top-level keys, `format_version` ≠ 1, `graph_version` ≠ code’s `GRAPH_VERSION`, `pause` shape, or `run_id` mismatch vs file). **`run_id`** must be non-empty ASCII, at most 128 characters, using only letters, digits, hyphen, underscore, dot, and hash; no `..` substring. **`pause`** is `null` unless `state_id` is `waiting_external`, in which case it is an object with exactly `reason`, `pause_key`, `stage_name`, `summary` (all strings) — this is the persisted form of “why we’re blocked”; `TickOutcome.pause_reason` still exposes a convenience field for callers. **Cleanup:** operators may delete `HATPIN_SPIKE_STATE_DIR` between eval runs. By default the checkpoint JSON **remains** when a run reaches `done` for inspection; set `HATPIN_SPIKE_DELETE_CHECKPOINT_ON_DONE` to `true`/`1`/`yes` to delete the JSON after the terminal write (off by default).
 
 ### 2.3 `transitions` triggers are called on the *model*
 
@@ -129,11 +132,11 @@ The spike now exposes `WorkflowGate` / `GateOutcome` / `GateReleaseNotReady`, fi
 
 `run_coroutine_sync` implements the loop-detection + helper-thread strategy and now adds **stage-level `asyncio.wait_for`** (configurable via `HATPIN_SPIKE_ASYNC_STAGE_TIMEOUT`). Remaining gaps: cooperative cancellation beyond `wait_for`, and any production-wide policy for timeouts/backoff.
 
-### 4.4 Tighten persistence contract to match Phase 0 spec — **next (Task 4)**
+### 4.4 Tighten persistence contract to match Phase 0 spec — **done (Task 4)**
 
-**In flight / planned:** canonical `run_id` rules, documented checkpoint schema, cleanup policy, fail-closed `graph_version` / `format_version` handling, and a single place for pause-field naming (see roadmap Task 4).
+Canonical `run_id` validation, checkpoint v1 schema validation on load, cleanup/env-gated delete-on-done, and fail-closed version fields are implemented (see §2.2 and `huey_transitions` / `state_paths`).
 
-**Already true today:** checkpoint stores `pause_key`, `reason`, `stage_name`, `summary` under `checkpoint["pause"]` when paused; `pause` is cleared after successful gate release; `TickOutcome.pause_reason` reflects blocked ticks.
+**Still spike-only:** no migration from v1 to a future v2 beyond raising `ValueError` on unsupported versions.
 
 ### 4.5 Clearer “unit of retry”
 
@@ -149,7 +152,7 @@ Then encode that policy in:
 
 ## 5. Recommendation (preliminary)
 
-**Proceed** with **Task 4 (persistence contract and schema/versioning)** so checkpoints and `run_id` rules are explicit before layering **Task 5 (Huey-native retries / backoff)**.
+**Proceed** with **Task 5 (Huey-native retries / backoff)** now that **Task 4** documents and enforces the spike persistence contract.
 
 The spike already demonstrates: graph + checkpoint ticks, real queue execution without immediate mode, async bridging with bounded stage time, and ADR-shaped gates for external pause/resume.
 
