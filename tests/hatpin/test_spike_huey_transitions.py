@@ -82,11 +82,11 @@ def test_spike_huey_enqueue_tick_immediate_mode(tmp_path, monkeypatch):
     """Huey enqueue should execute a tick when immediate=True (test mode)."""
     monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
 
-    from hatpin.workflow_spikes.huey_transitions import create_run, enqueue_tick, _get_huey
+    from hatpin.workflow_spikes.huey_transitions import create_run, enqueue_tick, get_spike_huey
 
     create_run("r3")
 
-    huey = _get_huey()
+    huey = get_spike_huey()
     huey.immediate = True
 
     enqueue_tick("r3")
@@ -99,14 +99,14 @@ def test_spike_huey_retryable_failure_retries_once_in_immediate_mode(tmp_path, m
     """A retryable transient failure should be retried once in immediate mode."""
     monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
 
-    from hatpin.workflow_spikes.huey_transitions import create_run, enqueue_tick, _get_huey
+    from hatpin.workflow_spikes.huey_transitions import create_run, enqueue_tick, get_spike_huey
     from hatpin.context import WorkflowContext
 
     ctx = WorkflowContext()
     ctx.facts["_fail_once_in_coding"] = True
     create_run("r4", initial_context=ctx)
 
-    huey = _get_huey()
+    huey = get_spike_huey()
     huey.immediate = True
 
     # First tick (planning->coding) executes; second attempt should fail once
