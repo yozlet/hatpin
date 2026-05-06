@@ -1,6 +1,0 @@
-corvidae @ git+https://github.com/schuyler/corvidae.git
-
-[dev]
-pytest
-pytest-asyncio
-pytest-timeout
