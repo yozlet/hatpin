@@ -9,19 +9,21 @@
 
 Hatpin is a **semi-deterministic workflow engine** that drives an LLM through a multi-stage GitHub issue implementation workflow. Key characteristics:
 
-| Aspect | Current Implementation |
-|---|---|
-| **Language** | Python 3.13+, asyncio |
-| **Architecture** | Linear stage backbone with escape hatches (backward jumps) |
-| **State** | In-memory only (`WorkflowContext` dataclass) |
-| **LLM integration** | Imports Corvidae primitives directly (`LLMClient`, `run_agent_turn`, `ToolRegistry`) |
-| **Stages** | **Implemented:** 11 stages (mechanical and LLM-driven; tool-calling loop per LLM stage). **Deferred:** stages 12–14 (e.g. respond to PR feedback, close issue) — see `hatpin/workflows/issue.py`. |
-| **Tool scoping** | Each stage gets a curated tool set |
-| **Exit control** | Three-layer: `stage_complete` tool → exit criteria verification → optional human gate |
-| **Workflow** | GitHub issue → plan → branch → tests → implement → refactor → commit → docs → PR |
-| **Durable execution** | **None.** If the process crashes, all state is lost. |
-| **Pause/resume** | **Not implemented** for deferred post-PR work. Stages 12–14 need suspend/resume while waiting on external events (PR review, merge, CI). |
-| **Size** | ~800 lines of implementation across 11 source files |
+
+| Aspect                | Current Implementation                                                                                                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Language**          | Python 3.13+, asyncio                                                                                                                                                                             |
+| **Architecture**      | Linear stage backbone with escape hatches (backward jumps)                                                                                                                                        |
+| **State**             | In-memory only (`WorkflowContext` dataclass)                                                                                                                                                      |
+| **LLM integration**   | Imports Corvidae primitives directly (`LLMClient`, `run_agent_turn`, `ToolRegistry`)                                                                                                              |
+| **Stages**            | **Implemented:** 11 stages (mechanical and LLM-driven; tool-calling loop per LLM stage). **Deferred:** stages 12–14 (e.g. respond to PR feedback, close issue) — see `hatpin/workflows/issue.py`. |
+| **Tool scoping**      | Each stage gets a curated tool set                                                                                                                                                                |
+| **Exit control**      | Three-layer: `stage_complete` tool → exit criteria verification → optional human gate                                                                                                             |
+| **Workflow**          | GitHub issue → plan → branch → tests → implement → refactor → commit → docs → PR                                                                                                                  |
+| **Durable execution** | **None.** If the process crashes, all state is lost.                                                                                                                                              |
+| **Pause/resume**      | **Not implemented** for deferred post-PR work. Stages 12–14 need suspend/resume while waiting on external events (PR review, merge, CI).                                                          |
+| **Size**              | ~800 lines of implementation across 11 source files                                                                                                                                               |
+
 
 ### Pain Points That Motivate This Research
 
@@ -45,15 +47,17 @@ Hatpin is a **semi-deterministic workflow engine** that drives an LLM through a 
 ## 2. Research Questions
 
 ### Primary
+
 1. Does an existing workflow engine with **durable execution** fit hatpin's architecture (stage isolation, deterministic control flow, LLM tool-calling loops)?
 2. Would adopting it **reduce or increase** total complexity?
 3. Can it handle the **LLM-in-the-loop** pattern (long-running async operations with tool-calling loops that may take minutes per stage)?
 
 ### Secondary
-4. How would it affect the **tight Corvidae integration** (direct imports, shared config, shared tools)?
-5. What's the **operational overhead** (database, server, separate process)?
-6. Is there a **migration path** that preserves the existing workflow definition?
-7. Does it enable the **deferred stages (12–14)** that need **pause/resume for external events**?
+
+1. How would it affect the **tight Corvidae integration** (direct imports, shared config, shared tools)?
+2. What's the **operational overhead** (database, server, separate process)?
+3. Is there a **migration path** that preserves the existing workflow definition?
+4. Does it enable the **deferred stages (12–14)** that need **pause/resume for external events**?
 
 ---
 
@@ -69,48 +73,58 @@ Split by **operational footprint**: true zero extra infrastructure vs. a message
 
 Pure-Python options with file-based or embedded persistence — closest to “just run the CLI.”
 
-| Engine | Deps to install | Persistence backend | Durable? | Notes |
-|---|---|---|---|---|
-| **hatpin + file persistence** | 0 new deps | JSON/SQLite file | 🟡 stage-level | Serialize `WorkflowContext` after each stage. Not a library — just a pattern. |
-| **Huey** | 1 package (85KB) | SQLite (built-in) or Redis | ✅ per-task | Lightweight task queue. Maps stages to tasks. Has retries, scheduling, pipelines. SQLite backend avoids a broker. |
-| **APScheduler** | 1 package (64KB) | SQLAlchemy, MongoDB, etc. | 🟡 job-level | Job scheduling with persistence. Supports async. Not a workflow engine per se, but could manage stage execution with state persistence. |
-| **transitions** | 1 package (112KB) | None built-in (add your own) | 🟡 with glue | State machine library. Could model hatpin's stages as states and add JSON/SQLite persistence. Escape hatches are transitions. |
+
+| Engine                        | Deps to install   | Persistence backend          | Durable?       | Notes                                                                                                                                   |
+| ----------------------------- | ----------------- | ---------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **hatpin + file persistence** | 0 new deps        | JSON/SQLite file             | 🟡 stage-level | Serialize `WorkflowContext` after each stage. Not a library — just a pattern.                                                           |
+| **Huey**                      | 1 package (85KB)  | SQLite (built-in) or Redis   | ✅ per-task     | Lightweight task queue. Maps stages to tasks. Has retries, scheduling, pipelines. SQLite backend avoids a broker.                       |
+| **APScheduler**               | 1 package (64KB)  | SQLAlchemy, MongoDB, etc.    | 🟡 job-level   | Job scheduling with persistence. Supports async. Not a workflow engine per se, but could manage stage execution with state persistence. |
+| **transitions**               | 1 package (112KB) | None built-in (add your own) | 🟡 with glue   | State machine library. Could model hatpin's stages as states and add JSON/SQLite persistence. Escape hatches are transitions.           |
+
 
 #### Tier A2: Lightweight library, but requires Redis or RabbitMQ
 
 Same “small SDK” spirit as A1, but **not** zero-infrastructure: you must run and operate a broker.
 
-| Engine | Deps to install | Persistence backend | Durable? | Notes |
-|---|---|---|---|---|
-| **Dramatiq** | 1 package (125KB) | Redis or RabbitMQ | ✅ per-task | Task queue with middleware for retries. Compare to Huey+SQLite — Dramatiq implies broker ops. |
+
+| Engine       | Deps to install   | Persistence backend | Durable?   | Notes                                                                                         |
+| ------------ | ----------------- | ------------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| **Dramatiq** | 1 package (125KB) | Redis or RabbitMQ   | ✅ per-task | Task queue with middleware for retries. Compare to Huey+SQLite — Dramatiq implies broker ops. |
+
 
 ### Tier B: Requires a database, but no separate server (evaluate second)
 
 These need a database (usually Postgres) but don't require running a separate server process. The "server" is your Python process.
 
-| Engine | Deps to install | Requires | Durable? | Notes |
-|---|---|---|---|---|
-| **DBOS** | 11 packages (~8MB) | PostgreSQL | ✅ step-level | Decorator-based (`@workflow`, `@step`). Very Pythonic. Postgres is the only external dep. Step-level durability with automatic recovery. |
-| **Redun** | ~15 packages | Postgres or SQLite | 🟡 caching-based | Recomputation-based — doesn't persist workflow state so much as cache results and intelligently recompute. More suited to data pipelines. |
+
+| Engine    | Deps to install    | Requires           | Durable?         | Notes                                                                                                                                     |
+| --------- | ------------------ | ------------------ | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **DBOS**  | 11 packages (~8MB) | PostgreSQL         | ✅ step-level     | Decorator-based (`@workflow`, `@step`). Very Pythonic. Postgres is the only external dep. Step-level durability with automatic recovery.  |
+| **Redun** | ~15 packages       | Postgres or SQLite | 🟡 caching-based | Recomputation-based — doesn't persist workflow state so much as cache results and intelligently recompute. More suited to data pipelines. |
+
 
 ### Tier C: Requires a separate server (evaluate only if A and B don't work)
 
 These are full platforms. They require running a server process (plus usually a database) and have significant SDK footprints.
 
-| Engine | Deps to install | Server required | Durable? | Notes |
-|---|---|---|---|---|
-| **Temporal** | 3 packages (~14MB) | Temporal server (Go binary) + PostgreSQL/Cassandra | ✅ event-sourced | Industry-standard durable execution. Requires running a separate server. Most powerful option but biggest operational leap. |
-| **Prefect** | 80+ packages (~huge; order-of-magnitude — verify with `uv lock` / resolver when evaluating) | Optional (ephemeral mode for dev) | ✅ task-level | Can run without a server locally. Dependency tree is very large (e.g. FastAPI, SQLAlchemy, …). |
-| **Inngest** | 10 packages | Inngest server (or cloud) | ✅ event-driven | Event-driven model. Python SDK is newer. Can self-host or use cloud. |
+
+| Engine       | Deps to install                                                                             | Server required                                    | Durable?        | Notes                                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------- | -------------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Temporal** | 3 packages (~14MB)                                                                          | Temporal server (Go binary) + PostgreSQL/Cassandra | ✅ event-sourced | Industry-standard durable execution. Requires running a separate server. Most powerful option but biggest operational leap. |
+| **Prefect**  | 80+ packages (~huge; order-of-magnitude — verify with `uv lock` / resolver when evaluating) | Optional (ephemeral mode for dev)                  | ✅ task-level    | Can run without a server locally. Dependency tree is very large (e.g. FastAPI, SQLAlchemy, …).                              |
+| **Inngest**  | 10 packages                                                                                 | Inngest server (or cloud)                          | ✅ event-driven  | Event-driven model. Python SDK is newer. Can self-host or use cloud.                                                        |
+
 
 ### Tier D: Likely mismatched (skip unless Tier A/B reveal a gap)
 
-| Engine | Why skip |
-|---|---|
-| **Airflow** | DAG-based, batch-oriented. No escape hatches. Heavyweight (Flask web server, SQLAlchemy, etc.) |
-| **Dagster** | Asset-oriented, designed for data pipelines. Wrong abstraction for LLM workflows. |
-| **Hamilton** | Functional data pipelines, not durable execution. |
-| **Step Functions / AWS SFN** | AWS lock-in, JSON state machine definitions, not Python-native. |
+
+| Engine                       | Why skip                                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| **Airflow**                  | DAG-based, batch-oriented. No escape hatches. Heavyweight (Flask web server, SQLAlchemy, etc.) |
+| **Dagster**                  | Asset-oriented, designed for data pipelines. Wrong abstraction for LLM workflows.              |
+| **Hamilton**                 | Functional data pipelines, not durable execution.                                              |
+| **Step Functions / AWS SFN** | AWS lock-in, JSON state machine definitions, not Python-native.                                |
+
 
 ### Dependency weight comparison
 
@@ -132,35 +146,40 @@ Inngest:               +10 packages            ← moderate, needs server
 For each candidate, evaluate against these dimensions (score 1-5):
 
 ### 4.1 Architecture Fit
+
 - **Stage isolation**: Can each "stage" be an independent unit of work with its own prompt/tool set? Or does the engine force a DAG where all steps are visible?
 - **LLM-in-the-loop**: Can a single "step" run an async tool-calling loop that may last minutes (multiple LLM turns, tool dispatches)? Or does the engine assume steps are short-lived functions?
 - **Escape hatches**: Can the engine express backward jumps (goto an earlier stage)? Most workflow engines assume forward-only DAGs.
 - **Mechanical stages**: Can some stages be simple code (no LLM, no await) while others are complex async loops?
 
 ### 4.2 Durable Execution
+
 - **Crash recovery**: If the process dies mid-stage, can it resume from the last completed stage? From the last completed tool call within a stage?
 - **Pause/resume**: Can execution be suspended (e.g., "wait for PR review") and resumed hours/days later when an external event arrives?
 - **Event sourcing / replay**: Does the engine record inputs/outputs of each step? Can you inspect the history?
 - **Saga / compensation**: If a stage partially fails (e.g., committed code but PR creation failed), does the engine support rollback or compensation?
 
 ### 4.3 Integration Cost
+
 - **Corvidae coupling**: Hatpin imports `LLMClient`, `run_agent_turn`, `ToolRegistry`, `dispatch_tool_call` directly. How much adapter code is needed?
 - **Python asyncio compatibility**: Does the engine work with `asyncio` natively? Or does it use threads/processes?
 - **Config sharing**: Can the engine read `agent.yaml` and share config with Corvidae?
 
 ### 4.4 Operational Overhead
+
 - **Dependencies**: How many new packages? Database requirement? Separate server?
 - **Local development**: Can you run workflows locally without infrastructure?
 - **Deployment complexity**: What's needed in production vs. what hatpin needs now (a single CLI command)?
 
 ### 4.5 Developer Experience
+
 - **Migration effort**: How much of the existing ~800 lines can be preserved? How much must be rewritten?
 - **Debugging**: Can you step through a workflow, inspect intermediate state, replay failed stages?
 - **Testing**: Can you unit test individual stages easily?
 
 ### 4.6 Human gates vs external pause
 
-Hatpin already supports **`human_gate`** (pause before proceeding). Deferred stages 12–14 need a different shape of pause: **wait hours/days for an external event** (PR review, merge), then resume.
+Hatpin already supports `**human_gate`** (pause before proceeding). Deferred stages 12–14 need a different shape of pause: **wait hours/days for an external event** (PR review, merge), then resume.
 
 For each candidate, clarify:
 
@@ -191,6 +210,7 @@ Before evaluating any external library, test whether the simplest possible appro
 **Why this first:** Hatpin's tools are already idempotent (comment dedup, idempotent label, branch recreation). Stage-level crash recovery may be "good enough" without any external library. If it is, the question becomes: what additional value does an external engine provide?
 
 **Questions to answer:**
+
 - Does stage-level persistence solve the crash recovery problem adequately?
 - How hard is pause/resume to implement naively? (A webhook endpoint + state file?)
 - What's missing that an external engine would provide? (Observability? Concurrency? Saga compensation?)
@@ -205,10 +225,10 @@ Screen **Huey**, **APScheduler**, and **transitions** (Tier **A1** — no broker
 1. Read the docs and core concepts
 2. Skim the Python API
 3. Answer: **Can it express hatpin's stage model?** Specifically:
-   - Escape hatches (backward jumps to earlier stages)?
-   - LLM tool-calling loops (a single "task" that runs for minutes with multiple async turns)?
-   - Mechanical stages (simple sync code)?
-   - Two-channel output (summaries + facts)?
+  - Escape hatches (backward jumps to earlier stages)?
+  - LLM tool-calling loops (a single "task" that runs for minutes with multiple async turns)?
+  - Mechanical stages (simple sync code)?
+  - Two-channel output (summaries + facts)?
 4. Answer: **What does persistence look like?** Can it recover from a crash mid-stage? Only between stages?
 5. Answer: **How invasive is it?** Can hatpin's `engine.py`, `stage.py`, and tool definitions stay mostly intact?
 
@@ -229,6 +249,7 @@ Only proceed to Tier B (DBOS) or Tier C (Temporal) if Tier A doesn't have a viab
 ### Phase 3: Decision (30 minutes)
 
 Compare the chosen approach against:
+
 - **Complexity delta**: Does it add more code/concepts than it removes?
 - **Operational cost**: Any new infrastructure? Or still just `python -m hatpin`?
 - **Migration risk**: How much working code must change?
@@ -241,6 +262,7 @@ Compare the chosen approach against:
 There's a fundamental tension in hatpin's architecture that will determine whether any external library fits:
 
 **Within a single LLM stage**, hatpin runs a multi-turn tool-calling loop (potentially 20 turns). Each turn is:
+
 1. Send messages to LLM
 2. Receive response with tool calls
 3. Dispatch tool calls
@@ -249,11 +271,13 @@ There's a fundamental tension in hatpin's architecture that will determine wheth
 
 **Question:** What level of durability does hatpin actually need?
 
-| Level | What it means | Complexity cost | How to get it |
-|---|---|---|---|
-| **Stage-level** | Resume from the start of the current stage after a crash | Low (~100 lines) | Serialize `WorkflowContext` to JSON after each stage. Hatpin can do this itself. |
-| **Tool-call-level** | Resume from the last completed tool call within a stage | Medium | Needs a persistence library or significant new code |
-| **LLM-turn-level** | Resume from the last LLM response | High | Needs full message history persistence |
+
+| Level               | What it means                                            | Complexity cost  | How to get it                                                                    |
+| ------------------- | -------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------- |
+| **Stage-level**     | Resume from the start of the current stage after a crash | Low (~100 lines) | Serialize `WorkflowContext` to JSON after each stage. Hatpin can do this itself. |
+| **Tool-call-level** | Resume from the last completed tool call within a stage  | Medium           | Needs a persistence library or significant new code                              |
+| **LLM-turn-level**  | Resume from the last LLM response                        | High             | Needs full message history persistence                                           |
+
 
 Hatpin's stages are designed to be **idempotent in aggregate** (the comment tool deduplicates, the label tool is idempotent, branches can be recreated). This means **stage-level durability** may be sufficient — if a stage crashes, re-running it from scratch is acceptable because the tools handle duplicate calls gracefully.
 
@@ -271,19 +295,21 @@ Most external engines operate at the **step/task level** — their "step" maps t
 
 Fill in during evaluation. The key question: does any option provide meaningful value over Phase 0 (just adding persistence)?
 
-| Criterion | Hatpin (current) | + file persistence | Huey | transitions | APScheduler | DBOS | Temporal |
-|---|---|---|---|---|---|---|---|
-| Durable execution | ❌ | 🟡 stage-level | | | | | |
-| Pause/resume (external events) | ❌ | 🟡 DIY | | | | | |
-| Escape hatches (backward jumps) | ✅ | ✅ | | | | | |
-| LLM tool-calling loop | ✅ native | ✅ native | | | | | |
-| Mechanical stages | ✅ | ✅ | | | | | |
-| New packages | 0 | 0 | 1 | 1 | 1 | 11 | 3+server |
-| External server required | ✅ none | ✅ none | | | | | |
-| External database required | ✅ none | ✅ none | | | | | |
-| Lines of hatpin code preserved | ~800 | ~780 | | | | | |
-| Local dev simplicity | ✅ | ✅ | | | | | |
-| Testability per-stage | ✅ | ✅ | | | | | |
+
+| Criterion                       | Hatpin (current) | + file persistence | Huey | transitions | APScheduler | DBOS | Temporal |
+| ------------------------------- | ---------------- | ------------------ | ---- | ----------- | ----------- | ---- | -------- |
+| Durable execution               | ❌                | 🟡 stage-level     |      |             |             |      |          |
+| Pause/resume (external events)  | ❌                | 🟡 DIY             |      |             |             |      |          |
+| Escape hatches (backward jumps) | ✅                | ✅                  |      |             |             |      |          |
+| LLM tool-calling loop           | ✅ native         | ✅ native           |      |             |             |      |          |
+| Mechanical stages               | ✅                | ✅                  |      |             |             |      |          |
+| New packages                    | 0                | 0                  | 1    | 1           | 1           | 11   | 3+server |
+| External server required        | ✅ none           | ✅ none             |      |             |             |      |          |
+| External database required      | ✅ none           | ✅ none             |      |             |             |      |          |
+| Lines of hatpin code preserved  | ~800             | ~780               |      |             |             |      |          |
+| Local dev simplicity            | ✅                | ✅                  |      |             |             |      |          |
+| Testability per-stage           | ✅                | ✅                  |      |             |             |      |          |
+
 
 ---
 
@@ -332,20 +358,16 @@ The bar for adopting an external library should be: **does it replace more compl
 These affect how much weight to put on Tier B/C (concurrency, observability platforms) and on persistence design:
 
 1. **Concurrent workflow runs** — **Decision:** Parallel runs may be needed (e.g. multiple issues/repos). Treat **worker pools, queue backends, and isolation between runs** as real evaluation criteria — not only single-process crash recovery. Tier B/C options stay on the table longer than for a strictly serial CLI.
-
-2. **Secrets and persisted artifacts** — **Decision (default team practice):** **Minimize what we persist** (avoid storing raw tool transcripts where possible; keep checkpoints focused on `WorkflowContext` fields needed to resume), treat **`.hatpin/` as machine-local and sensitive** (document in README — do not sync blindly to cloud backup paths), and **defer encryption at rest** until a concrete deployment constraint appears.
-
-   **Tradeoffs accepted:** Faster iteration and simpler code paths vs losing full forensic replay from disk alone; ongoing maintenance of **what** gets serialized as tooling evolves; users who sync project folders must exclude `.hatpin/` or accept exposure risk.
-
+2. **Secrets and persisted artifacts** — **Decision (default team practice):** **Minimize what we persist** (avoid storing raw tool transcripts where possible; keep checkpoints focused on `WorkflowContext` fields needed to resume), treat `**.hatpin/` as machine-local and sensitive** (document in README — do not sync blindly to cloud backup paths), and **defer encryption at rest** until a concrete deployment constraint appears.
+  **Tradeoffs accepted:** Faster iteration and simpler code paths vs losing full forensic replay from disk alone; ongoing maintenance of **what** gets serialized as tooling evolves; users who sync project folders must exclude `.hatpin/` or accept exposure risk.
    **Revisit:** [Issue #1 — Revisit persisted-workflow secrets policy](https://github.com/yozlet/hatpin/issues/1).
-
-3. **`human_gate` vs long external waits** — Design choice still open; see subsection below (including **one abstraction, many gate kinds**).
+3. `**human_gate` vs long external waits** — Design choice still open; see subsection below (including **one abstraction, many gate kinds**).
 
 ---
 
 ### Example: `human_gate` today vs “wait for PR”
 
-Today, **`human_gate`** means: after a stage completes with `PROCEED`, the engine calls **`_human_approval`**, which prints a summary and **`input("Proceed? [y/N]")`** — the **same Python process** blocks until you type `y` or `n`. No timer, no GitHub — it is “stop until the human at this terminal agrees.”
+Today, `**human_gate`** means: after a stage completes with `PROCEED`, the engine calls `**_human_approval`**, which prints a summary and `**input("Proceed? [y/N]")**` — the **same Python process** blocks until you type `y` or `n`. No timer, no GitHub — it is “stop until the human at this terminal agrees.”
 
 A **deferred PR stage** is different: hatpin would **finish or exit**, someone reviews on GitHub days later, CI runs, then you want hatpin to **resume** (e.g. address review comments). Nothing is waiting at stdin during that time; the trigger is **external** (poll GitHub, webhook, `gh pr view`, etc.).
 
