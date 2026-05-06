@@ -12,6 +12,8 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-timeout",
+    "huey",
+    "transitions",
 ]
 
 [tool.hatch.metadata]

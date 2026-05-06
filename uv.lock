@@ -753,17 +753,21 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "huey" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-timeout" },
+    { name = "transitions" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "corvidae", directory = "/Users/yozgrahame/code/corvidae" },
+    { name = "huey", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'" },
     { name = "pytest-timeout", marker = "extra == 'dev'" },
+    { name = "transitions", marker = "extra == 'dev'" },
 ]
 provides-extras = ["dev"]
 
@@ -856,6 +860,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0f/4c/751061ffa58615a32c31b2d82e8482be8dd4a89154f003147acee90f2be9/httpx_sse-0.4.3.tar.gz", hash = "sha256:9b1ed0127459a66014aec3c56bebd93da3c1bc8bb6618c8082039a44889a755d", size = 15943, upload-time = "2025-10-10T21:48:22.271Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d2/fd/6668e5aec43ab844de6fc74927e155a3b37bf40d7c3790e49fc0406b6578/httpx_sse-0.4.3-py3-none-any.whl", hash = "sha256:0ac1c9fe3c0afad2e0ebb25a934a59f4c7823b60792691f779fad2c5568830fc", size = 8960, upload-time = "2025-10-10T21:48:21.158Z" },
+]
+
+[[package]]
+name = "huey"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/12/45221a95f4b55a4e322cd5bfe23e9067d5c9fda37dde4389dfe8e0ad5574/huey-3.0.0.tar.gz", hash = "sha256:0cfc83617b90132b0d375a3a3726aa7263cd461e7ae12af79b3a94e2630afaf5", size = 252413, upload-time = "2026-04-14T20:04:17.79Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/44/6b158ee6a8cbbe646065c53ec1e83bf0982078939f12990eaaf7120a6f8e/huey-3.0.0-py3-none-any.whl", hash = "sha256:b92087253ab6e7c806e9ce3602d6f546eefb7c1b1ee7d1dc5be2b9691d23b28c", size = 85944, upload-time = "2026-04-14T20:04:16.234Z" },
 ]
 
 [[package]]
@@ -2710,6 +2723,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f2/36/390075693b76d4fb4a2bea360fb6080347763bd1f1147c49ed0ed938778c/transformers-5.8.0.tar.gz", hash = "sha256:6cc9a1f0291d16b1c1b735bad775e78ebefff7722701d4e28f98aaaa2bd6fb91", size = 8528141, upload-time = "2026-05-05T16:50:04.778Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/97/7b/5621d08b34ac35deb9fa14b58d27d124d21ef125ee1c64bc724ca47dfb63/transformers-5.8.0-py3-none-any.whl", hash = "sha256:e9d2cae6d195a7e1e05164c5ebf26142a7044e4dc4267274f4809204f92827e4", size = 10630279, upload-time = "2026-05-05T16:50:01.026Z" },
+]
+
+[[package]]
+name = "transitions"
+version = "0.9.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4f/83/9e90f3494057d73c9e6bd8de8488af7c9fa714666ccc2db30fe07d147818/transitions-0.9.3.tar.gz", hash = "sha256:881fb75bb1654ed55d86060bb067f2c716f8e155f57bb73fd444e53713aafec8", size = 1191029, upload-time = "2025-07-02T10:49:03.153Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f4/05/fea3020e90aa378941ff10de8860fb3b1288313c27efd10fa0c476498f7e/transitions-0.9.3-py2.py3-none-any.whl", hash = "sha256:02463248f2b668d86f66636b1e3c9e8de84d93e22915247f4e1aa9ee1cae28aa", size = 112792, upload-time = "2025-07-02T10:49:01.415Z" },
 ]
 
 [[package]]

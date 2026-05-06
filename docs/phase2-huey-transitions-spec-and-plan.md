@@ -4,6 +4,7 @@
 - [`docs/research-workflow-engines.md`](./research-workflow-engines.md)
 - [`docs/research-workflow-engines-phase0-1-findings.md`](./research-workflow-engines-phase0-1-findings.md)
 - Design draft: [`docs/spec-huey-transitions-hybrid.md`](./spec-huey-transitions-hybrid.md)
+- Related ADR: [`docs/adr/0001-unified-workflow-gate-protocol.md`](./adr/0001-unified-workflow-gate-protocol.md)
 
 **Date:** 2026-05-05  
 **Scope:** Minimal prototype (“tracer bullet”) to validate the Huey+`transitions` hybrid architecture at **stage-level durability**.  
@@ -55,16 +56,89 @@ Validate that we can combine:
 
 ---
 
-## 4. Plan (vertical slices, TDD)
+## 4. Interfaces (public entrypoints to test)
+
+This is an evaluation spike; the goal is to keep the surface area small and test through a few stable entrypoints.
+
+### 4.1 CLI (optional but preferred)
+
+- `python -m hatpin workflow spike-hybrid run --run-id <id>`: start or continue a run until it reaches a pause or terminal.
+- `python -m hatpin workflow spike-hybrid resume --run-id <id>`: release a paused run (either by writing the resume signal or by enqueueing the next tick).
+
+If adding CLI is too invasive for Phase 2, tests may target a module API instead (below) and the CLI can be skipped.
+
+### 4.2 Module API (required)
+
+Define a minimal, testable API (names are intentionally explicit and spike-scoped):
+
+- `hatpin/workflow_spikes/huey_transitions.py`
+  - `create_run(run_id: str, *, initial_context: WorkflowContext | None = None) -> None`
+  - `run_tick(run_id: str) -> "TickOutcome"`
+  - `enqueue_tick(run_id: str) -> None`
+  - `resume(run_id: str) -> None`
+
+Public tests should assert:
+
+- correct **checkpoint** contents and progression,
+- correct **pause** behavior (no forward progress until resume),
+- correct **retry** behavior for transient failures,
+- correct **escape hatch** routing (back-edge),
+- correct **async stage** execution pattern (no nested event loop hacks).
+
+---
+
+## 5. Spec: Prototype shape (minimum)
+
+### 5.1 Minimal state graph
+
+Use 3–5 states that mirror Hatpin’s real concerns without pulling in GitHub:
+
+- `planning` (async “LLM-like” stage)
+- `coding` (mechanical stage)
+- `verify` (mechanical stage that can fail and escape back to `coding`)
+- `waiting_external` (pause)
+- `done` (terminal)
+
+Escape hatch:
+
+- `verify` can transition back to `coding` when a validation condition fails.
+
+### 5.2 Persistence contract (align with Phase 0)
+
+Persist at stage boundaries only, consistent with [`docs/spec-phase0-workflow-persistence.md`](./spec-phase0-workflow-persistence.md):
+
+- Crash during a stage ⇒ rerun that stage on next tick.
+- Persist a minimal `WorkflowContext` (two-channel) and state id.
+- Omit tool logs by default.
+
+If Phase 2 chooses a DB row instead of JSON, keep the **payload semantics** identical and document the swap in `phase2-huey-transitions-findings.md`.
+
+### 5.3 Gates and pause/resume (align with ADR 0001)
+
+Even if we do not implement the full `WorkflowGate` protocol, the spike should model the same concept:
+
+- stage completes
+- optional gate may block further progress
+- resume releases the gate and allows next tick
+
+At minimum, represent pause as a persisted checkpoint state with:
+
+- `pause_reason` (e.g. `"external_condition"` or `"human_gate"`)
+- `pause_key` (string) identifying what will release it (e.g. `"resume.flag:<run_id>"`)
+
+---
+
+## 6. Plan (vertical slices, TDD)
 
 Timebox: 2–4 hours total.
 
 ### Slice A: Graph + checkpoint round-trip (no Huey yet)
 
 - [ ] Add a minimal `transitions` graph with 3–5 states in a spike module.
-- [ ] Define persisted checkpoint: `{run_id, state_id, context}` using Phase 0 JSON policy (tool logs off).
+- [ ] Define persisted checkpoint: `{run_id, state_id, context, metadata...}` using Phase 0 policy (tool logs off).
 - [ ] Tests:
-  - round-trip `(state_id, context)` → file → load → same behavior.
+  - round-trip `(state_id, context)` → persistence → load → same behavior.
+  - persisted payload contains two-channel context (summaries vs facts).
 
 ### Slice B: “Tick runner” (in-process)
 
@@ -98,7 +172,7 @@ Timebox: 2–4 hours total.
 
 ---
 
-## 5. Acceptance criteria (“Phase 2 succeeded if…”)
+## 7. Acceptance criteria (“Phase 2 succeeded if…”)
 
 - [ ] We can encode backward transitions in `transitions` and drive them from stage outcomes.
 - [ ] We can run an async stage in a Huey task without nested event loop hacks.
@@ -108,7 +182,7 @@ Timebox: 2–4 hours total.
 
 ---
 
-## 6. Risks to watch (explicit)
+## 8. Risks to watch (explicit)
 
 - The hybrid introduces two “next step” mechanisms; the prototype must prove a single source of truth (graph + runner) with Huey as executor only.
 - Async execution in Huey may be awkward; if so, we may need:
