@@ -1,3 +1,55 @@
+"""Huey + ``transitions`` spike: tick runner, checkpoint I/O, queue hooks.
+
+**Spike checkpoint v1** (JSON object, one file per run under :func:`spike_state_dir`):
+
+.. list-table::
+   :widths: 20 15 65
+
+   * - Field
+     - Required
+     - Meaning
+   * - ``format_version``
+     - yes
+     - Schema epoch. Only ``1`` is supported; any other value → :exc:`ValueError`
+       (no migration in the spike).
+   * - ``graph_version``
+     - yes
+     - Must equal :data:`GRAPH_VERSION` in code; mismatch → :exc:`ValueError`
+       (fail-closed; no silent upgrade).
+   * - ``run_id``
+     - yes
+     - Logical id; must match the filename run and :func:`validate_spike_run_id`.
+   * - ``state_id``
+     - yes
+     - One of ``planning``, ``coding``, ``verify``, ``waiting_external``, ``done``.
+   * - ``updated_at``
+     - yes
+     - ISO-8601 UTC timestamp string (spike writes Z suffix).
+   * - ``context``
+     - yes
+     - Object with optional ``summaries`` / ``facts`` dicts (two-channel
+       :class:`~hatpin.context.WorkflowContext`; tool logs omitted).
+   * - ``pause``
+     - yes
+     - ``null`` when not paused, or an object with **exactly** ``reason``,
+       ``pause_key``, ``stage_name``, ``summary`` (all strings) when paused.
+   * - ``spike``
+     - no
+     - Optional bag for spike-only markers (e.g. retry simulation).
+
+**Versioning:** unsupported ``format_version`` or ``graph_version`` always
+raise :exc:`ValueError`. Corrupt or non-object JSON raises :exc:`ValueError`.
+Unknown top-level keys in the checkpoint object raise :exc:`ValueError`
+(fail-closed for evaluation).
+
+**Cleanup:** default is to **keep** the JSON when ``state_id`` is ``done`` so
+operators can inspect runs. Set ``HATPIN_SPIKE_DELETE_CHECKPOINT_ON_DONE`` to
+``1`` / ``true`` / ``yes`` to remove the checkpoint file after a terminal write
+(still off by default to avoid surprise data loss). Operators may delete
+``HATPIN_SPIKE_STATE_DIR`` (or the default ``.hatpin/spikes/huey_transitions``)
+between eval runs; Huey SQLite lives beside checkpoints in that directory.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -16,7 +68,11 @@ from hatpin.stage import Stage
 from hatpin.types import StageOutcome, StageResult
 from hatpin.workflow_gate import GateOutcome, GateReleaseNotReady
 from hatpin.workflow_spikes import spike_gates as _spike_gates
-from hatpin.workflow_spikes.state_paths import safe_spike_run_segment, spike_state_dir
+from hatpin.workflow_spikes.state_paths import (
+    safe_spike_run_segment,
+    spike_state_dir,
+    validate_spike_run_id,
+)
 
 _T = TypeVar("_T")
 
@@ -26,8 +82,24 @@ SPIKE_ASYNC_STAGE_TIMEOUT_DEFAULT_S = 300.0
 FORMAT_VERSION = 1
 GRAPH_VERSION = 1
 
+_CHECKPOINT_TOP_KEYS = frozenset(
+    {
+        "format_version",
+        "graph_version",
+        "run_id",
+        "state_id",
+        "updated_at",
+        "context",
+        "pause",
+        "spike",
+    }
+)
+_PAUSE_KEYS = frozenset({"reason", "pause_key", "stage_name", "summary"})
 
 StateId = Literal["planning", "coding", "verify", "waiting_external", "done"]
+_KNOWN_STATE_IDS: frozenset[str] = frozenset(
+    {"planning", "coding", "verify", "waiting_external", "done"}
+)
 
 
 @dataclass(frozen=True)
