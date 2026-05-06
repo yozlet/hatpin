@@ -117,3 +117,36 @@ def test_spike_huey_retryable_failure_retries_once_in_immediate_mode(tmp_path, m
     payload = json.loads((tmp_path / "r4.json").read_text())
     assert payload["state_id"] == "verify"
 
+
+def test_spike_huey_enqueue_tick_real_worker_advances_checkpoint(tmp_path, monkeypatch):
+    """Non-immediate mode: task is queued and Worker.loop executes run_tick once."""
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import (
+        create_run,
+        enqueue_tick,
+        get_spike_huey,
+    )
+
+    run_id = "t1-real-queue"
+    create_run(run_id)
+
+    huey = get_spike_huey()
+    huey.immediate = False
+
+    enqueue_tick(run_id)
+
+    checkpoint_path = tmp_path / "t1-real-queue.json"
+    payload_after_enqueue = json.loads(checkpoint_path.read_text())
+    assert payload_after_enqueue["state_id"] == "planning"
+
+    consumer = huey.create_consumer(workers=1, periodic=False)
+    worker = consumer.worker_threads[0][0]
+    worker.initialize()
+    worker.loop()
+
+    payload = json.loads(checkpoint_path.read_text())
+    assert payload["state_id"] == "coding"
+    assert payload["context"]["summaries"]["planning"] == "planned"
+    assert "tool_logs" not in payload["context"]
+

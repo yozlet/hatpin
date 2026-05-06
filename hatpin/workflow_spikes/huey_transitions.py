@@ -198,6 +198,16 @@ def _get_huey():
     return huey
 
 
+def get_spike_huey():
+    """Return the SqliteHuey instance used by :func:`enqueue_tick` for this spike.
+
+    Spike/evaluation only — not a stable Hatpin workflow API. Delegates to the
+    same singleton keyed by ``HATPIN_SPIKE_STATE_DIR`` / ``huey.sqlite3`` as
+    internal enqueue routing.
+    """
+    return _get_huey()
+
+
 _HUEY_BY_DB: dict[str, Any] = {}
 
 
