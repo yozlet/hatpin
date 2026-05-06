@@ -10,6 +10,8 @@
 **Scope:** Minimal prototype (“tracer bullet”) to validate the Huey+`transitions` hybrid architecture at **stage-level durability**.  
 **Non-goal:** Productionize deferred stages 12–14. This is an evaluation/prototype.
 
+**Status (2026-05-06):** Slices A–D and roadmap **Tasks 1–3** are implemented in the spike (`hatpin/workflow_spikes/`). **Tasks 4–5** remain. See [`docs/phase2-huey-transitions-findings.md`](./phase2-huey-transitions-findings.md).
+
 ---
 
 ## 1. Purpose
@@ -136,39 +138,39 @@ Timebox: 2–4 hours total.
 
 ### Slice A: Graph + checkpoint round-trip (no Huey yet)
 
-- [ ] Add a minimal `transitions` graph with 3–5 states in a spike module.
-- [ ] Define persisted checkpoint: `{run_id, state_id, context, metadata...}` using Phase 0 policy (tool logs off).
-- [ ] Tests:
+- [x] Add a minimal `transitions` graph with 3–5 states in a spike module.
+- [x] Define persisted checkpoint: `{run_id, state_id, context, metadata...}` using Phase 0 policy (tool logs off).
+- [x] Tests:
   - round-trip `(state_id, context)` → persistence → load → same behavior.
   - persisted payload contains two-channel context (summaries vs facts).
 
 ### Slice B: “Tick runner” (in-process)
 
-- [ ] Implement `run_tick(run_id)` that:
+- [x] Implement `run_tick(run_id)` that:
   - loads checkpoint,
   - runs mechanical stage for current state,
   - applies `transitions` trigger,
   - saves checkpoint,
   - returns whether done.
-- [ ] Tests:
+- [x] Tests:
   - tick advances state and persists after each stage boundary.
   - escape hatch path works (e.g. verification fails → back to coding).
 
 ### Slice C: Huey integration (durable queued execution)
 
-- [ ] Add Huey optional dependency group for the spike.
-- [ ] Wrap `run_tick` into a Huey task: `run_workflow_tick(run_id)`.
-- [ ] Tests:
+- [x] Add Huey optional dependency group for the spike.
+- [x] Wrap `run_tick` into a Huey task: `run_workflow_tick(run_id)`.
+- [x] Tests:
   - enqueue tick → consume locally → checkpoint updates.
-  - simulate “new worker instance” (new Huey object) draining same SQLite queue.
+  - prove non-immediate queue → `Worker.loop()` executes the task and advances checkpoint (same process; not a second Huey instance).
 
 ### Slice D: Retry and pause/resume semantics
 
-- [ ] Add a simulated transient failure mode in one stage (e.g. raise `OSError` once, then succeed).
-- [ ] Configure Huey retry behavior for that task (or explicit re-enqueue with backoff).
-- [ ] Add a pause state (e.g. `waiting_external`) that writes checkpoint and stops enqueueing.
-- [ ] Resume signal (CLI `resume` or file flag) causes subsequent tick to proceed.
-- [ ] Tests:
+- [x] Add a simulated transient failure mode in one stage (e.g. raise `OSError` once, then succeed).
+- [ ] Configure Huey retry behavior for that task (or explicit re-enqueue with backoff) — **deferred to roadmap Task 5** (immediate-mode still uses a manual retry loop).
+- [x] Add a pause state (e.g. `waiting_external`) that writes checkpoint and stops enqueueing.
+- [x] Resume signal (CLI `resume` or file flag) causes subsequent tick to proceed.
+- [x] Tests:
   - transient failure leads to a retry and eventual progress,
   - pause stops progress until resume signal exists.
 
@@ -176,11 +178,11 @@ Timebox: 2–4 hours total.
 
 ## 7. Acceptance criteria (“Phase 2 succeeded if…”)
 
-- [ ] We can encode backward transitions in `transitions` and drive them from stage outcomes.
-- [ ] We can run an async stage in a Huey task without nested event loop hacks.
-- [ ] Checkpointing is correct and minimal (tool logs off by default).
-- [ ] A crash between stages can be simulated and resume continues at the correct state.
-- [ ] Retry and pause/resume semantics are demonstrably workable at stage-level granularity.
+- [x] We can encode backward transitions in `transitions` and drive them from stage outcomes.
+- [x] We can run an async stage in a Huey task without nested event loop hacks (`run_coroutine_sync`: no `asyncio.run` on a thread that already has a loop; bounded `wait_for` for stage work).
+- [x] Checkpointing is correct and minimal (tool logs off by default).
+- [x] A crash between stages can be simulated and resume continues at the correct state (stage-boundary semantics; rerun current stage if interrupted mid-stage).
+- [x] Retry and pause/resume semantics are demonstrably workable at stage-level granularity (Huey-native retry policy still **Task 5**).
 
 ---
 
@@ -197,14 +199,14 @@ Timebox: 2–4 hours total.
 
 If the spike is promising, do the following in this order (stop early if any step reveals a fundamental mismatch):
 
-- [ ] **Task 1 — Prove real Huey execution (not immediate mode)**  
-  Add one integration-style test that starts a Huey consumer/worker against SQLite, enqueues a tick, and asserts the checkpoint advances.
+- [x] **Task 1 — Prove real Huey execution (not immediate mode)**  
+  Done: `test_spike_huey_enqueue_tick_real_worker_advances_checkpoint` enqueues with `immediate=False`, asserts checkpoint still `planning`, runs one `Worker.loop()` (no `consumer.start()`), asserts `planning` → `coding`. See also `get_spike_huey()`.
 
-- [ ] **Task 2 — Decide and implement the “blessed” async bridging strategy**  
-  Replace ad hoc `asyncio.run(...)` usage with a single approach that is safe when an event loop is already running (and works cleanly inside Huey worker processes/threads).
+- [x] **Task 2 — Decide and implement the “blessed” async bridging strategy**  
+  Done (spike): `run_coroutine_sync` — `asyncio.run` when no running loop (typical Huey worker thread); helper thread + fresh loop when a loop is already running; `asyncio.wait_for` around stage work with `HATPIN_SPIKE_ASYNC_STAGE_TIMEOUT` (default 300s, `0` = unbounded). Gaps: cooperative cancellation beyond `wait_for`, production-wide timeout policy.
 
-- [ ] **Task 3 — Make pause/resume align with ADR 0001 (`WorkflowGate`)**  
-  Replace the flag-file pause mechanism with an explicit gate protocol (at least in the spike) so both stdin and external waits share one conceptual interface.
+- [x] **Task 3 — Make pause/resume align with ADR 0001 (`WorkflowGate`)**  
+  Done (spike): `hatpin/workflow_gate.py`, `hatpin/workflow_spikes/spike_gates.py`, persisted `pause` + `pause_key`, `run_tick` / `resume` through `resolve_gate_for_pause_key`; `checkpoint["pause"]` cleared on successful release; `safe_spike_run_segment` for path safety. Stdin gate exists but is not selectable via persisted `pause_key` in this slice (only `resume.flag:`).
 
 - [ ] **Task 4 — Tighten the persistence contract and schema/versioning**  
   - define canonical `run_id` format

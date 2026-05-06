@@ -1,11 +1,11 @@
 # Phase 2 (Huey + `transitions`): Spike Findings + Rationale
 
-**Date:** 2026-05-06  
+**Date:** 2026-05-06 (roadmap synced 2026-05-06)  
 **Spec/plan:** [`docs/phase2-huey-transitions-spec-and-plan.md`](./phase2-huey-transitions-spec-and-plan.md)  
-**Spike code:** `hatpin/workflow_spikes/huey_transitions.py`  
-**Spike tests:** `tests/hatpin/test_spike_huey_transitions.py`
+**Spike code:** `hatpin/workflow_spikes/huey_transitions.py`, `hatpin/workflow_spikes/spike_gates.py`, `hatpin/workflow_spikes/state_paths.py`, `hatpin/workflow_gate.py`  
+**Spike tests:** `tests/hatpin/test_spike_huey_transitions.py`, `tests/hatpin/test_workflow_gate.py`
 
-**Update (2026-05-06):** Future-improvement **§4.1** (“real” Huey execution) is **done**. There is an integration test that sets `huey.immediate = False`, enqueues a tick, runs one `Worker.loop()` from a `create_consumer(...)` instance (without `start()`), and asserts the checkpoint advances `planning` → `coding`. Public `get_spike_huey()` returns the same `SqliteHuey` instance as `enqueue_tick()`. See [`docs/superpowers/specs/2026-05-06-phase2-huey-task1-real-execution-design.md`](./superpowers/specs/2026-05-06-phase2-huey-task1-real-execution-design.md).
+**Roadmap status:** **Tasks 1–3** (real Huey queue execution, async bridge, ADR-shaped gates) are **done** in the spike. **Task 4** (persistence contract / schema) and **Task 5** (Huey-native retries) are **next** — see spec §9.
 
 ## 1. What we built (and why)
 
@@ -45,7 +45,7 @@ This keeps the test surface small while still validating:
 
 **Decision:** checkpoint is a JSON file under a spike directory:
 
-- default: `.hatpin/spikes/huey_transitions/<run_id>.json`
+- default: `.hatpin/spikes/huey_transitions/<safe-run-segment>.json` (segment from `run_id` via `safe_spike_run_segment`)
 - override: `HATPIN_SPIKE_STATE_DIR` (tests use a temp directory)
 
 **Reasoning:**
@@ -129,14 +129,11 @@ The spike now exposes `WorkflowGate` / `GateOutcome` / `GateReleaseNotReady`, fi
 
 `run_coroutine_sync` implements the loop-detection + helper-thread strategy and now adds **stage-level `asyncio.wait_for`** (configurable via `HATPIN_SPIKE_ASYNC_STAGE_TIMEOUT`). Remaining gaps: cooperative cancellation beyond `wait_for`, and any production-wide policy for timeouts/backoff.
 
-### 4.4 Tighten persistence contract to match Phase 0 spec
+### 4.4 Tighten persistence contract to match Phase 0 spec — **next (Task 4)**
 
-If/when migrating beyond spike-quality:
+**In flight / planned:** canonical `run_id` rules, documented checkpoint schema, cleanup policy, fail-closed `graph_version` / `format_version` handling, and a single place for pause-field naming (see roadmap Task 4).
 
-- define a canonical `run_id` (aligned to issue key)
-- define where checkpoint lives in the repo
-- define a fail-closed story for `graph_version` mismatch
-- checkpoint stores `pause_key` / `reason` under `checkpoint["pause"]` when paused; ticks expose `TickOutcome.pause_reason` when still blocked
+**Already true today:** checkpoint stores `pause_key`, `reason`, `stage_name`, `summary` under `checkpoint["pause"]` when paused; `pause` is cleared after successful gate release; `TickOutcome.pause_reason` reflects blocked ticks.
 
 ### 4.5 Clearer “unit of retry”
 
@@ -152,9 +149,11 @@ Then encode that policy in:
 
 ## 5. Recommendation (preliminary)
 
-**Proceed** with **Task 2 (async bridging)** as the next gate for treating this spike as safe outside sync/Huey-worker contexts. The “enqueue → queue → worker executes task” slice is now demonstrated in tests; production-shaped async hosting still needs a blessed bridging strategy.
+**Proceed** with **Task 4 (persistence contract and schema/versioning)** so checkpoints and `run_id` rules are explicit before layering **Task 5 (Huey-native retries / backoff)**.
 
-If async bridging becomes complex quickly, consider a split:
+The spike already demonstrates: graph + checkpoint ticks, real queue execution without immediate mode, async bridging with bounded stage time, and ADR-shaped gates for external pause/resume.
+
+If future production work needs richer async isolation than the spike bridge, consider a split:
 
 - Huey runs **mechanical** stages and gating/scheduling
 - async LLM stages run in a separate “agent runner” process/worker that Huey invokes via a stable boundary (subprocess, RPC, or a dedicated async worker)
