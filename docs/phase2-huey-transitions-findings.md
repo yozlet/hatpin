@@ -5,6 +5,8 @@
 **Spike code:** `hatpin/workflow_spikes/huey_transitions.py`  
 **Spike tests:** `tests/hatpin/test_spike_huey_transitions.py`
 
+**Update (2026-05-06):** Future-improvement **§4.1** (“real” Huey execution) is **done**. There is an integration test that sets `huey.immediate = False`, enqueues a tick, runs one `Worker.loop()` from a `create_consumer(...)` instance (without `start()`), and asserts the checkpoint advances `planning` → `coding`. Public `get_spike_huey()` returns the same `SqliteHuey` instance as `enqueue_tick()`. See [`docs/superpowers/specs/2026-05-06-phase2-huey-task1-real-execution-design.md`](./superpowers/specs/2026-05-06-phase2-huey-task1-real-execution-design.md).
+
 ## 1. What we built (and why)
 
 This Phase 2 spike intentionally implements the smallest “hybrid” that still exercises the core hypothesis:
@@ -68,13 +70,15 @@ This keeps the test surface small while still validating:
 
 **Caveat:** this will not be safe if `run_tick()` is ever called from within an already-running event loop. If we integrate this pattern into real Hatpin execution, we’ll need a single “blessed” async bridging strategy.
 
-### 2.5 Huey integration: immediate-mode for deterministic tests
+### 2.5 Huey integration: immediate-mode for most tests + one real-queue test
 
-**Decision:** `enqueue_tick()` uses Huey + SQLite, but tests run in Huey “immediate” mode (synchronous) rather than spinning up a worker thread/process.
+**Decision:** `enqueue_tick()` uses Huey + SQLite. Most tests still use Huey **immediate** mode (synchronous) so they stay stable and fast without background threads.
 
-**Reasoning:** the spike’s primary question is “does the architecture make sense?”, not “can we manage a consumer lifecycle inside unit tests.” Immediate-mode keeps tests stable and fast.
+**Reasoning:** the spike’s primary question is “does the architecture make sense?”, not “can we manage a long-lived consumer in every unit test.” Immediate-mode keeps the bulk of coverage simple.
 
-**Trade-off:** immediate-mode does not fully validate worker behavior (e.g. retry mechanics, task result semantics, concurrency).
+**Addition:** one integration test uses **non-immediate** mode: it enqueues a tick, confirms the checkpoint has **not** advanced yet, then drives a single `Worker.loop()` so dequeue → `execute` runs for real (see §4.1).
+
+**Remaining gap:** we still do not spin up `consumer.start()` (full scheduler + worker threads) in CI; threaded runtime behavior is a smaller slice than queue-backed execution of the decorated task.
 
 ### 2.6 Retry simulation is stage-boundary and persisted
 
@@ -100,22 +104,18 @@ This keeps the test surface small while still validating:
 ### Cons / limitations
 
 - **Async bridging is not production-safe:** `asyncio.run(...)` will collide with “already running loop” contexts.
-- **Huey worker semantics are not fully validated:** tests do not start a consumer; immediate-mode is a useful approximation, not a proof.
+- **Huey worker semantics are partly validated:** enqueue → SQLite → dequeue → `execute` is covered without immediate mode; full `consumer.start()` / threaded integration is still not the default test path.
 - **Retry handling in immediate-mode is ad hoc:** `enqueue_tick()` retries once manually for `OSError` in immediate mode. In a real worker, we’d want Huey-native retries with backoff.
 - **Pause modeling is simplified:** the spike uses a flag file; real waits (PR review, CI completion) need a richer gate condition model.
 - **Checkpoint schema is spike-specific:** it is versioned, but not yet tied to Hatpin’s stage list/graph evolution story.
 
 ## 4. Future improvements (next iteration)
 
-### 4.1 Run “real” Huey consumer in an integration test
+### 4.1 Run “real” Huey execution (not immediate mode) — **done**
 
-Add one test that:
+Implemented as `test_spike_huey_enqueue_tick_real_worker_advances_checkpoint`: non-immediate `SqliteHuey`, enqueue tick, assert checkpoint still `planning`, then `Worker.initialize()` + one `Worker.loop()` on the worker from `huey.create_consumer(workers=1, periodic=False)` (no `consumer.start()`).
 
-- enqueues a tick,
-- runs a Huey consumer/worker (thread/process) against the same SQLite DB,
-- asserts the checkpoint advanced.
-
-This validates the actual durable execution mechanism, not just the API shape.
+**Optional later:** add a **threaded** consumer test (`consumer.start()` … `stop()`) if we need extra confidence in scheduler + worker lifecycle — not required for the current Task 1 bar.
 
 ### 4.2 Adopt ADR 0001 (`WorkflowGate`) explicitly in the spike
 
@@ -154,7 +154,7 @@ Then encode that policy in:
 
 ## 5. Recommendation (preliminary)
 
-**Proceed** to a “real worker” integration slice *if* we can define a robust async bridging approach.
+**Proceed** with **Task 2 (async bridging)** as the next gate for treating this spike as safe outside sync/Huey-worker contexts. The “enqueue → queue → worker executes task” slice is now demonstrated in tests; production-shaped async hosting still needs a blessed bridging strategy.
 
 If async bridging becomes complex quickly, consider a split:
 
