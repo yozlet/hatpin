@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.13+, asyncio, Corvidae primitives (LLMClient, run_agent_turn, Tool/ToolRegistry, dispatch_tool_call), PyYAML, `gh` CLI for GitHub operations.
 
+**See also:** [ADR 0001 — Unified workflow gate protocol](adr/0001-unified-workflow-gate-protocol.md) (`WorkflowGate` sketch; `StdinGate` vs `ExternalConditionGate`). Optional future refactor of `human_gate`; not implemented in this plan’s baseline tasks.
+
 ---
 
 ## File Structure
