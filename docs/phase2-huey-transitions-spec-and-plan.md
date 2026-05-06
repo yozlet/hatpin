@@ -54,6 +54,8 @@ Validate that we can combine:
    - what broke,
    - recommendation: proceed / abandon / adjust design.
 
+See also: [`docs/phase2-huey-transitions-findings.md`](./phase2-huey-transitions-findings.md).
+
 ---
 
 ## 4. Interfaces (public entrypoints to test)
@@ -188,4 +190,28 @@ Timebox: 2–4 hours total.
 - Async execution in Huey may be awkward; if so, we may need:
   - a dedicated async worker runner, or
   - to keep Huey only for mechanical stages and use a different driver for async stages.
+
+---
+
+## 9. Future improvements (ordered task list)
+
+If the spike is promising, do the following in this order (stop early if any step reveals a fundamental mismatch):
+
+- [ ] **Task 1 — Prove real Huey execution (not immediate mode)**  
+  Add one integration-style test that starts a Huey consumer/worker against SQLite, enqueues a tick, and asserts the checkpoint advances.
+
+- [ ] **Task 2 — Decide and implement the “blessed” async bridging strategy**  
+  Replace ad hoc `asyncio.run(...)` usage with a single approach that is safe when an event loop is already running (and works cleanly inside Huey worker processes/threads).
+
+- [ ] **Task 3 — Make pause/resume align with ADR 0001 (`WorkflowGate`)**  
+  Replace the flag-file pause mechanism with an explicit gate protocol (at least in the spike) so both stdin and external waits share one conceptual interface.
+
+- [ ] **Task 4 — Tighten the persistence contract and schema/versioning**  
+  - define canonical `run_id` format
+  - define checkpoint location and cleanup policy
+  - define fail-closed behavior for `graph_version` mismatch + migration strategy
+  - standardize `pause_reason` / `pause_key` in the checkpoint
+
+- [ ] **Task 5 — Clarify and encode retry semantics**  
+  Define retryable vs terminal failures; implement Huey-native retries/backoff (instead of spike-only retry loops) and ensure idempotency expectations are explicit.
 
