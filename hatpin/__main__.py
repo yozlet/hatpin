@@ -56,12 +56,12 @@ def configure_workflow_logging(
         os.makedirs(log_dir, exist_ok=True)
 
     # Get the workflow logger
-    workflow_logger = logging.getLogger("workflow")
-    workflow_logger.setLevel(logging.DEBUG)
-    workflow_logger.propagate = False
+    hatpin_logger = logging.getLogger("hatpin")
+    hatpin_logger.setLevel(logging.DEBUG)
+    hatpin_logger.propagate = False
 
     # Remove any existing handlers to avoid duplicates on re-configure
-    workflow_logger.handlers.clear()
+    hatpin_logger.handlers.clear()
 
     # File handler: full structured debug logs
     file_handler = logging.FileHandler(log_file, encoding="utf-8")
@@ -70,14 +70,14 @@ def configure_workflow_logging(
         fmt="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     ))
-    workflow_logger.addHandler(file_handler)
+    hatpin_logger.addHandler(file_handler)
 
     # STDOUT handler: only warnings and above
     # Stage progress is shown via the Display module, not through logging
     stdout_handler = logging.StreamHandler(sys.stdout)
     stdout_handler.setLevel(logging.WARNING)
     stdout_handler.setFormatter(logging.Formatter("%(message)s"))
-    workflow_logger.addHandler(stdout_handler)
+    hatpin_logger.addHandler(stdout_handler)
 
     # Quiet the root logger to suppress third-party noise
     logging.getLogger().setLevel(logging.WARNING)

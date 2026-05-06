@@ -239,14 +239,14 @@ async def _collect_workflow_logs(runner, stage, context, caplog):
     Ensures the workflow logger propagates so caplog can capture records.
     Restores the original propagation value on cleanup.
     """
-    wf_logger = logging.getLogger("workflow")
-    original_propagate = wf_logger.propagate
-    wf_logger.propagate = True
+    hatpin_logger = logging.getLogger("hatpin")
+    original_propagate = hatpin_logger.propagate
+    hatpin_logger.propagate = True
     try:
-        with caplog.at_level(logging.DEBUG, logger="workflow.stage"):
+        with caplog.at_level(logging.DEBUG, logger="hatpin.stage"):
             result = await runner.run(stage, context)
     finally:
-        wf_logger.propagate = original_propagate
+        hatpin_logger.propagate = original_propagate
     return result, caplog.records
 
 

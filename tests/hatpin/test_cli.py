@@ -49,7 +49,7 @@ class TestConfigureWorkflowLogging:
         log_file = str(tmp_path / "workflow.log")
         configure_workflow_logging(log_file=log_file)
         # Write a log message to verify the file gets created
-        logger = logging.getLogger("workflow")
+        logger = logging.getLogger("hatpin")
         logger.info("test message")
         # Flush handlers
         for handler in logger.handlers:
@@ -59,7 +59,7 @@ class TestConfigureWorkflowLogging:
     def test_stdout_handler_is_human_readable(self, capsys):
         """STDOUT handler outputs human-readable format (no timestamps)."""
         configure_workflow_logging(log_file="/dev/null")
-        logger = logging.getLogger("workflow")
+        logger = logging.getLogger("hatpin")
         logger.info("test stage message")
         # Flush handlers
         for handler in logger.handlers:
@@ -80,7 +80,7 @@ class TestConfigureWorkflowLogging:
         """File handler captures DEBUG-level messages."""
         log_file = str(tmp_path / "workflow.log")
         configure_workflow_logging(log_file=log_file)
-        logger = logging.getLogger("workflow")
+        logger = logging.getLogger("hatpin")
         logger.debug("debug detail message")
         # Flush handlers
         for handler in logger.handlers:
@@ -93,7 +93,7 @@ class TestConfigureWorkflowLogging:
         """File handler uses StructuredFormatter."""
         log_file = str(tmp_path / "workflow.log")
         configure_workflow_logging(log_file=log_file)
-        logger = logging.getLogger("workflow")
+        logger = logging.getLogger("hatpin")
         logger.info("structured test", extra={"tool_name": "read", "target_file": "file.py"})
         for handler in logger.handlers:
             handler.flush()
@@ -107,7 +107,7 @@ class TestConfigureWorkflowLogging:
         """configure_workflow_logging creates the log directory if needed."""
         log_file = str(tmp_path / "logs" / "workflow.log")
         configure_workflow_logging(log_file=log_file)
-        logger = logging.getLogger("workflow")
+        logger = logging.getLogger("hatpin")
         logger.info("test")
         for handler in logger.handlers:
             handler.flush()
