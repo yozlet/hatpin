@@ -1,7 +1,7 @@
 """Tests for workflow.config — load_agent_config, create_llm_client."""
 
 import pytest
-from workflow.config import load_agent_config, create_llm_client
+from hatpin.config import load_agent_config, create_llm_client
 
 
 def test_load_agent_config_reads_yaml(tmp_path):

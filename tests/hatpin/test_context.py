@@ -1,7 +1,7 @@
 """Tests for workflow.context — WorkflowContext."""
 
-from workflow.types import ToolCallRecord
-from workflow.context import WorkflowContext
+from hatpin.types import ToolCallRecord
+from hatpin.context import WorkflowContext
 
 
 def test_empty_context_builds_empty_string():

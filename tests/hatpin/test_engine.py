@@ -10,10 +10,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from workflow.types import StageOutcome, StageResult
-from workflow.context import WorkflowContext
-from workflow.stage import Stage
-from workflow.engine import WorkflowEngine
+from hatpin.types import StageOutcome, StageResult
+from hatpin.context import WorkflowContext
+from hatpin.stage import Stage
+from hatpin.engine import WorkflowEngine
 
 
 def _mech_fn(name, outcome, summary, escape=None):

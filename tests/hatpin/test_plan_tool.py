@@ -3,7 +3,7 @@
 import pytest
 
 from corvidae.tool import Tool
-from workflow.tools.plan import (
+from hatpin.tools.plan import (
     PlanHolder,
     make_record_plan_tool,
     VALID_TASK_TYPES,

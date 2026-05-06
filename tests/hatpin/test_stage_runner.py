@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from corvidae.tool import Tool as CorvidaeTool
-from workflow.types import StageOutcome, StageResult
-from workflow.context import WorkflowContext
-from workflow.stage import Stage, StageRunner
+from hatpin.types import StageOutcome, StageResult
+from hatpin.context import WorkflowContext
+from hatpin.stage import Stage, StageRunner
 
 
 # -- Helpers for building mock LLM responses --

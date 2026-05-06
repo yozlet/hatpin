@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from workflow.types import ToolCallRecord
+from hatpin.types import ToolCallRecord
 
 
 @dataclass

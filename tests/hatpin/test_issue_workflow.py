@@ -4,9 +4,9 @@ import pytest
 
 from unittest.mock import AsyncMock, patch
 
-from workflow.types import StageOutcome
-from workflow.stage import Stage
-from workflow.workflows.issue import (
+from hatpin.types import StageOutcome
+from hatpin.stage import Stage
+from hatpin.workflows.issue import (
     build_issue_workflow, parse_issue_url, _docs_should_run,
     _tests_should_run, _refactor_should_run, _implement_should_run,
 )
@@ -87,10 +87,10 @@ async def test_add_label_creates_label_if_missing():
         repo_path="/r", issue_body="x",
     )
     label_stage = next(s for s in stages if s.name == "add_label")
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
 
-    with patch("workflow.workflows.issue.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.workflows.issue.shell", new_callable=AsyncMock) as mock:
         # First call: add-label fails with "not found"
         # Second call: create label succeeds
         # Third call: add-label succeeds
@@ -181,11 +181,11 @@ async def test_commit_changes_uses_implement_summary():
     commit_stage = next(s for s in stages if s.name == "commit_changes")
 
     # Create a context with an implement summary
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     ctx.summaries["implement"] = "Implemented the new feature with tests"
 
-    with patch("workflow.workflows.issue.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.workflows.issue.shell", new_callable=AsyncMock) as mock:
         # Three sequential calls: commit, branch name, push
         mock.side_effect = [
             "[main abc123] Implemented the new feature with tests",
@@ -234,7 +234,7 @@ def test_gate_docs_is_mechanical():
 @pytest.mark.timeout(5)
 async def test_docs_should_run_reads_facts_true():
     """_docs_should_run returns True when facts say docs are needed."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     ctx.facts["docs_needed"] = True
     assert _docs_should_run(ctx) is True
@@ -243,7 +243,7 @@ async def test_docs_should_run_reads_facts_true():
 @pytest.mark.timeout(5)
 async def test_docs_should_run_reads_facts_false():
     """_docs_should_run returns False when facts say docs not needed."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     ctx.facts["docs_needed"] = False
     assert _docs_should_run(ctx) is False
@@ -252,7 +252,7 @@ async def test_docs_should_run_reads_facts_false():
 @pytest.mark.timeout(5)
 async def test_docs_should_run_defaults_false_when_no_fact():
     """_docs_should_run returns False if no docs_needed fact is set."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     assert _docs_should_run(ctx) is False
 
@@ -260,7 +260,7 @@ async def test_docs_should_run_defaults_false_when_no_fact():
 @pytest.mark.timeout(5)
 async def test_gate_docs_mechanical_sets_facts_needed():
     """gate_docs mechanical fn sets docs_needed=True when source changed."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     stages = build_issue_workflow(
         repo="o/r", issue_number=1,
         repo_path="/r", issue_body="x",
@@ -272,7 +272,7 @@ async def test_gate_docs_mechanical_sets_facts_needed():
     diff_output = "src/main.py\nsrc/utils.py"
     ls_output = "configuration.md\ndesign.md\nplugin-guide.md"
 
-    with patch("workflow.workflows.issue.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.workflows.issue.shell", new_callable=AsyncMock) as mock:
         mock.side_effect = [diff_output, ls_output]
         result = await gate.mechanical_fn(ctx)
 
@@ -284,7 +284,7 @@ async def test_gate_docs_mechanical_sets_facts_needed():
 @pytest.mark.timeout(5)
 async def test_gate_docs_mechanical_sets_facts_not_needed():
     """gate_docs mechanical fn sets docs_needed=False when only tests changed."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     stages = build_issue_workflow(
         repo="o/r", issue_number=1,
         repo_path="/r", issue_body="x",
@@ -296,7 +296,7 @@ async def test_gate_docs_mechanical_sets_facts_not_needed():
     diff_output = "tests/test_main.py\ntests/test_utils.py"
     ls_output = "configuration.md\ndesign.md\nplugin-guide.md"
 
-    with patch("workflow.workflows.issue.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.workflows.issue.shell", new_callable=AsyncMock) as mock:
         mock.side_effect = [diff_output, ls_output]
         result = await gate.mechanical_fn(ctx)
 
@@ -308,7 +308,7 @@ async def test_gate_docs_mechanical_sets_facts_not_needed():
 @pytest.mark.timeout(5)
 async def test_gate_docs_mechanical_no_docs_dir():
     """gate_docs sets docs_needed=False when no docs directory exists."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     stages = build_issue_workflow(
         repo="o/r", issue_number=1,
         repo_path="/r", issue_body="x",
@@ -320,7 +320,7 @@ async def test_gate_docs_mechanical_no_docs_dir():
     diff_output = "src/main.py\nsrc/utils.py"
     ls_output = ""  # No docs found
 
-    with patch("workflow.workflows.issue.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.workflows.issue.shell", new_callable=AsyncMock) as mock:
         mock.side_effect = [diff_output, ls_output]
         result = await gate.mechanical_fn(ctx)
 
@@ -406,7 +406,7 @@ def test_submit_pr_mentions_plan():
 @pytest.mark.timeout(5)
 async def test_tests_should_run_defaults_true_without_plan():
     """_tests_should_run returns True when no plan exists."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     assert _tests_should_run(ctx) is True
 
@@ -414,7 +414,7 @@ async def test_tests_should_run_defaults_true_without_plan():
 @pytest.mark.timeout(5)
 async def test_tests_should_run_true_when_plan_needs_tests():
     """_tests_should_run returns True when plan says tests needed."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     ctx.facts["plan"] = {"needs_tests": True, "task_type": "feature"}
     assert _tests_should_run(ctx) is True
@@ -423,7 +423,7 @@ async def test_tests_should_run_true_when_plan_needs_tests():
 @pytest.mark.timeout(5)
 async def test_tests_should_run_false_when_plan_no_tests():
     """_tests_should_run returns False when plan says no tests needed."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     ctx.facts["plan"] = {"needs_tests": False, "task_type": "docs_only"}
     assert _tests_should_run(ctx) is False
@@ -432,7 +432,7 @@ async def test_tests_should_run_false_when_plan_no_tests():
 @pytest.mark.timeout(5)
 async def test_refactor_should_run_defaults_true_without_plan():
     """_refactor_should_run returns True when no plan exists."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     assert _refactor_should_run(ctx) is True
 
@@ -440,7 +440,7 @@ async def test_refactor_should_run_defaults_true_without_plan():
 @pytest.mark.timeout(5)
 async def test_refactor_should_run_false_for_docs_only():
     """_refactor_should_run returns False for docs_only tasks."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     ctx.facts["plan"] = {"task_type": "docs_only", "needs_tests": False}
     assert _refactor_should_run(ctx) is False
@@ -449,7 +449,7 @@ async def test_refactor_should_run_false_for_docs_only():
 @pytest.mark.timeout(5)
 async def test_refactor_should_run_true_for_feature():
     """_refactor_should_run returns True for feature tasks."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     ctx.facts["plan"] = {"task_type": "feature", "needs_tests": True}
     assert _refactor_should_run(ctx) is True
@@ -458,7 +458,7 @@ async def test_refactor_should_run_true_for_feature():
 @pytest.mark.timeout(5)
 async def test_refactor_should_run_true_for_bug_fix():
     """_refactor_should_run returns True for bug_fix tasks."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     ctx = WorkflowContext()
     ctx.facts["plan"] = {"task_type": "bug_fix", "needs_tests": True}
     assert _refactor_should_run(ctx) is True
@@ -467,7 +467,7 @@ async def test_refactor_should_run_true_for_bug_fix():
 @pytest.mark.timeout(5)
 async def test_post_fn_copies_plan_to_context():
     """comment_on_issue post_fn copies plan from holder to context.facts."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     stages = build_issue_workflow(
         repo="o/r", issue_number=1,
         repo_path="/r", issue_body="x",
@@ -478,7 +478,7 @@ async def test_post_fn_copies_plan_to_context():
     # Simulate the plan being recorded by the tool
     # (The plan_holder is internal to build_issue_workflow, so we
     # test by using the record_plan tool directly)
-    from workflow.tools.plan import PlanHolder, make_record_plan_tool
+    from hatpin.tools.plan import PlanHolder, make_record_plan_tool
     holder = PlanHolder()
     tool = make_record_plan_tool(holder)
     await tool.fn(
@@ -524,8 +524,8 @@ def test_implement_has_should_run():
 @pytest.mark.timeout(5)
 async def test_implement_should_run_defaults_true_without_plan():
     """_implement_should_run returns True when no plan exists (graceful degradation)."""
-    from workflow.context import WorkflowContext
-    from workflow.workflows.issue import _implement_should_run
+    from hatpin.context import WorkflowContext
+    from hatpin.workflows.issue import _implement_should_run
     ctx = WorkflowContext()
     assert _implement_should_run(ctx) is True
 
@@ -533,8 +533,8 @@ async def test_implement_should_run_defaults_true_without_plan():
 @pytest.mark.timeout(5)
 async def test_implement_should_run_true_for_feature():
     """_implement_should_run returns True for feature tasks."""
-    from workflow.context import WorkflowContext
-    from workflow.workflows.issue import _implement_should_run
+    from hatpin.context import WorkflowContext
+    from hatpin.workflows.issue import _implement_should_run
     ctx = WorkflowContext()
     ctx.facts["plan"] = {"task_type": "feature", "needs_tests": True}
     assert _implement_should_run(ctx) is True
@@ -543,8 +543,8 @@ async def test_implement_should_run_true_for_feature():
 @pytest.mark.timeout(5)
 async def test_implement_should_run_true_for_bug_fix():
     """_implement_should_run returns True for bug_fix tasks."""
-    from workflow.context import WorkflowContext
-    from workflow.workflows.issue import _implement_should_run
+    from hatpin.context import WorkflowContext
+    from hatpin.workflows.issue import _implement_should_run
     ctx = WorkflowContext()
     ctx.facts["plan"] = {"task_type": "bug_fix", "needs_tests": True}
     assert _implement_should_run(ctx) is True
@@ -553,8 +553,8 @@ async def test_implement_should_run_true_for_bug_fix():
 @pytest.mark.timeout(5)
 async def test_implement_should_run_false_for_docs_only():
     """_implement_should_run returns False for docs_only tasks (fast path)."""
-    from workflow.context import WorkflowContext
-    from workflow.workflows.issue import _implement_should_run
+    from hatpin.context import WorkflowContext
+    from hatpin.workflows.issue import _implement_should_run
     ctx = WorkflowContext()
     ctx.facts["plan"] = {"task_type": "docs_only", "needs_tests": False}
     assert _implement_should_run(ctx) is False
@@ -563,8 +563,8 @@ async def test_implement_should_run_false_for_docs_only():
 @pytest.mark.timeout(5)
 async def test_implement_should_run_true_for_refactor():
     """_implement_should_run returns True for refactor tasks."""
-    from workflow.context import WorkflowContext
-    from workflow.workflows.issue import _implement_should_run
+    from hatpin.context import WorkflowContext
+    from hatpin.workflows.issue import _implement_should_run
     ctx = WorkflowContext()
     ctx.facts["plan"] = {"task_type": "refactor", "needs_tests": True}
     assert _implement_should_run(ctx) is True
@@ -576,7 +576,7 @@ def test_fast_path_docs_only_skips_tdd_stages():
     The fast path means a simple README change doesn't go through the
     full TDD cycle of write_tests → implement → refactor.
     """
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     stages = build_issue_workflow(
         repo="o/r", issue_number=1,
         repo_path="/r", issue_body="Update README",
@@ -601,7 +601,7 @@ def test_fast_path_docs_only_skips_tdd_stages():
 
 def test_fast_path_feature_runs_all_tdd_stages():
     """Feature tasks run all TDD stages (no fast path)."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     stages = build_issue_workflow(
         repo="o/r", issue_number=1,
         repo_path="/r", issue_body="Add new feature",
@@ -623,7 +623,7 @@ def test_fast_path_feature_runs_all_tdd_stages():
 
 def test_fast_path_always_runs_commit_and_submit():
     """commit_changes and submit_pr always run regardless of task_type."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     stages = build_issue_workflow(
         repo="o/r", issue_number=1,
         repo_path="/r", issue_body="Docs update",
@@ -645,7 +645,7 @@ def test_fast_path_always_runs_commit_and_submit():
 @pytest.mark.timeout(5)
 async def test_commit_includes_co_authored_by_when_agent_name_set():
     """Mechanical commit fn appends Co-authored-by when agent_name is set."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     stages = build_issue_workflow(
         repo="o/r", issue_number=1,
         repo_path="/r", issue_body="Fix",
@@ -656,7 +656,7 @@ async def test_commit_includes_co_authored_by_when_agent_name_set():
     ctx = WorkflowContext()
     ctx.summaries["implement"] = "Fixed the thing"
 
-    with patch("workflow.workflows.issue.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.workflows.issue.shell", new_callable=AsyncMock) as mock:
         mock.return_value = "ok"
         result = await commit.mechanical_fn(ctx)
 
@@ -669,7 +669,7 @@ async def test_commit_includes_co_authored_by_when_agent_name_set():
 @pytest.mark.timeout(5)
 async def test_commit_no_co_authored_by_when_no_agent():
     """Mechanical commit fn does NOT include Co-authored-by by default."""
-    from workflow.context import WorkflowContext
+    from hatpin.context import WorkflowContext
     stages = build_issue_workflow(
         repo="o/r", issue_number=1,
         repo_path="/r", issue_body="Fix",
@@ -678,7 +678,7 @@ async def test_commit_no_co_authored_by_when_no_agent():
     ctx = WorkflowContext()
     ctx.summaries["implement"] = "Fixed the thing"
 
-    with patch("workflow.workflows.issue.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.workflows.issue.shell", new_callable=AsyncMock) as mock:
         mock.return_value = "ok"
         result = await commit.mechanical_fn(ctx)
 

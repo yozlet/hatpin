@@ -1,6 +1,6 @@
 """Tests for workflow.types — StageOutcome, ToolCallRecord, StageResult."""
 
-from workflow.types import StageOutcome, ToolCallRecord, StageResult
+from hatpin.types import StageOutcome, ToolCallRecord, StageResult
 
 
 def test_stage_outcome_values():

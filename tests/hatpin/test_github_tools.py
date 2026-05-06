@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from workflow.tools.github import (
+from hatpin.tools.github import (
     make_github_comment_tool,
     make_add_label_tool,
     make_create_pr_tool,
@@ -22,9 +22,9 @@ def _mock_subprocess(stdout: str, rc: int = 0):
 
 async def test_comment_on_issue():
     """comment_on_issue runs gh CLI with correct arguments."""
-    with patch("workflow.tools.github.asyncio.create_subprocess_shell",
+    with patch("hatpin.tools.github.asyncio.create_subprocess_shell",
                return_value=_mock_subprocess("[]")) as mock_sp, \
-         patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock_shell:
+         patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock_shell:
         mock_shell.return_value = (
             "https://github.com/o/r/issues/1#issuecomment-1"
         )
@@ -46,7 +46,7 @@ async def test_comment_on_issue():
 
 async def test_add_label():
     """add_label runs gh CLI to add a label."""
-    with patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock:
         mock.return_value = ""
         tool = make_add_label_tool("owner/repo", 42)
         result = await tool.fn(label="in-progress")
@@ -59,7 +59,7 @@ async def test_add_label():
 
 async def test_create_pr():
     """create_pr runs gh CLI to create a pull request."""
-    with patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock:
         mock.return_value = "https://github.com/o/r/pull/5"
         tool = make_create_pr_tool("owner/repo", "feat/issue-1")
         result = await tool.fn(title="Fix bug", body="Description")
@@ -72,7 +72,7 @@ async def test_create_pr():
 
 async def test_create_pr_dynamic_branch():
     """create_pr reads current branch dynamically when branch is None."""
-    with patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock_shell:
+    with patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock_shell:
         mock_shell.return_value = "https://github.com/o/r/pull/6"
         # Patch subprocess.run inside the function's local import
         import subprocess as real_subprocess
@@ -90,9 +90,9 @@ async def test_create_pr_dynamic_branch():
 
 async def test_comment_escapes_body():
     """comment_on_issue shell-escapes the body to prevent injection."""
-    with patch("workflow.tools.github.asyncio.create_subprocess_shell",
+    with patch("hatpin.tools.github.asyncio.create_subprocess_shell",
                return_value=_mock_subprocess("[]")), \
-         patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock:
+         patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock:
         mock.return_value = "ok"
         tool = make_github_comment_tool("o/r", 1)
         await tool.fn(body="test'; rm -rf /")
@@ -108,9 +108,9 @@ async def test_comment_skips_when_workflow_comment_exists():
         '[{"body": "Nice idea"},'
         ' {"body": "Plan here\\n\\n<!-- corvidae-workflow -->"}]'
     )
-    with patch("workflow.tools.github.asyncio.create_subprocess_shell",
+    with patch("hatpin.tools.github.asyncio.create_subprocess_shell",
                return_value=_mock_subprocess(comments_json)), \
-         patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock_shell:
+         patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock_shell:
         tool = make_github_comment_tool("owner/repo", 42)
         result = await tool.fn(body="My new plan")
 
@@ -123,9 +123,9 @@ async def test_comment_skips_when_workflow_comment_exists():
 
 async def test_comment_posts_when_no_workflow_comment_exists():
     """comment_on_issue posts when existing comments lack the marker."""
-    with patch("workflow.tools.github.asyncio.create_subprocess_shell",
+    with patch("hatpin.tools.github.asyncio.create_subprocess_shell",
                return_value=_mock_subprocess('[{"body": "Nice idea"}]')), \
-         patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock_shell:
+         patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock_shell:
         mock_shell.return_value = (
             "https://github.com/o/r/issues/1#issuecomment-1"
         )
@@ -138,9 +138,9 @@ async def test_comment_posts_when_no_workflow_comment_exists():
 
 async def test_comment_posts_when_comments_fetch_fails():
     """comment_on_issue posts anyway if comment check fails (fail open)."""
-    with patch("workflow.tools.github.asyncio.create_subprocess_shell",
+    with patch("hatpin.tools.github.asyncio.create_subprocess_shell",
                return_value=_mock_subprocess("not valid json")), \
-         patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock_shell:
+         patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock_shell:
         mock_shell.return_value = (
             "https://github.com/o/r/issues/1#issuecomment-1"
         )
@@ -153,9 +153,9 @@ async def test_comment_posts_when_comments_fetch_fails():
 
 async def test_comment_posts_when_no_comments_exist():
     """comment_on_issue posts when the issue has zero comments."""
-    with patch("workflow.tools.github.asyncio.create_subprocess_shell",
+    with patch("hatpin.tools.github.asyncio.create_subprocess_shell",
                return_value=_mock_subprocess("[]")), \
-         patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock_shell:
+         patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock_shell:
         mock_shell.return_value = (
             "https://github.com/o/r/issues/1#issuecomment-1"
         )
@@ -171,9 +171,9 @@ async def test_comment_posts_when_no_comments_exist():
 
 async def test_comment_includes_agent_signature():
     """comment_on_issue appends the agent signature footer."""
-    with patch("workflow.tools.github.asyncio.create_subprocess_shell",
+    with patch("hatpin.tools.github.asyncio.create_subprocess_shell",
                return_value=_mock_subprocess("[]")), \
-         patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock_shell:
+         patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock_shell:
         mock_shell.return_value = (
             "https://github.com/o/r/issues/1#issuecomment-1"
         )
@@ -191,9 +191,9 @@ async def test_comment_includes_agent_signature():
 
 async def test_comment_signature_after_marker():
     """Agent signature appears after the dedup marker in the body."""
-    with patch("workflow.tools.github.asyncio.create_subprocess_shell",
+    with patch("hatpin.tools.github.asyncio.create_subprocess_shell",
                return_value=_mock_subprocess("[]")), \
-         patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock_shell:
+         patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock_shell:
         mock_shell.return_value = "ok"
         tool = make_github_comment_tool(
             "owner/repo", 42,
@@ -212,9 +212,9 @@ async def test_comment_signature_after_marker():
 
 async def test_comment_no_signature_by_default():
     """comment_on_issue does NOT add signature when agent_name is not set."""
-    with patch("workflow.tools.github.asyncio.create_subprocess_shell",
+    with patch("hatpin.tools.github.asyncio.create_subprocess_shell",
                return_value=_mock_subprocess("[]")), \
-         patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock_shell:
+         patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock_shell:
         mock_shell.return_value = "ok"
         tool = make_github_comment_tool("owner/repo", 42)
         await tool.fn(body="My plan")
@@ -226,7 +226,7 @@ async def test_comment_no_signature_by_default():
 @pytest.mark.timeout(5)
 async def test_create_pr_includes_agent_signature():
     """create_pr appends agent signature to the PR body."""
-    with patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock:
         mock.return_value = "https://github.com/o/r/pull/5"
         tool = make_create_pr_tool(
             "owner/repo", "feat/issue-1",
@@ -242,7 +242,7 @@ async def test_create_pr_includes_agent_signature():
 @pytest.mark.timeout(5)
 async def test_create_pr_no_signature_by_default():
     """create_pr does NOT add signature when agent_name is not set."""
-    with patch("workflow.tools.github.shell", new_callable=AsyncMock) as mock:
+    with patch("hatpin.tools.github.shell", new_callable=AsyncMock) as mock:
         mock.return_value = "https://github.com/o/r/pull/5"
         tool = make_create_pr_tool("owner/repo", "feat/issue-1")
         result = await tool.fn(title="Fix bug", body="Description")

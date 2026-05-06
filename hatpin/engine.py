@@ -17,10 +17,10 @@ import logging
 
 from corvidae.llm import LLMClient
 
-from workflow.types import StageOutcome
-from workflow.context import WorkflowContext
-from workflow.display import Display
-from workflow.stage import Stage, StageRunner
+from hatpin.types import StageOutcome
+from hatpin.context import WorkflowContext
+from hatpin.display import Display
+from hatpin.stage import Stage, StageRunner
 
 logger = logging.getLogger(__name__)
 

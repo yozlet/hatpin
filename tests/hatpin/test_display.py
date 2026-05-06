@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from workflow.display import (
+from hatpin.display import (
     Display,
     display_stage_start,
     display_stage_complete,

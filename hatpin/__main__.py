@@ -23,10 +23,10 @@ import os
 import sys
 
 from corvidae.logging import StructuredFormatter
-from workflow.config import load_agent_config, create_llm_client
-from workflow.context import WorkflowContext
-from workflow.engine import WorkflowEngine
-from workflow.workflows.issue import build_issue_workflow, parse_issue_url
+from hatpin.config import load_agent_config, create_llm_client
+from hatpin.context import WorkflowContext
+from hatpin.engine import WorkflowEngine
+from hatpin.workflows.issue import build_issue_workflow, parse_issue_url
 
 logger = logging.getLogger(__name__)
 

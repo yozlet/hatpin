@@ -8,13 +8,13 @@ import tempfile
 
 import pytest
 
-from workflow.__main__ import configure_workflow_logging
+from hatpin.__main__ import configure_workflow_logging
 
 
 def test_cli_help():
     """CLI --help exits with 0."""
     result = subprocess.run(
-        [sys.executable, "-m", "workflow", "--help"],
+        [sys.executable, "-m", "hatpin", "--help"],
         capture_output=True, text=True,
     )
     assert result.returncode == 0
@@ -24,7 +24,7 @@ def test_cli_help():
 def test_cli_implement_help():
     """implement --help shows required arguments."""
     result = subprocess.run(
-        [sys.executable, "-m", "workflow", "implement", "--help"],
+        [sys.executable, "-m", "hatpin", "implement", "--help"],
         capture_output=True, text=True,
     )
     assert result.returncode == 0
@@ -34,7 +34,7 @@ def test_cli_implement_help():
 def test_cli_no_args_shows_help():
     """Running with no arguments shows help."""
     result = subprocess.run(
-        [sys.executable, "-m", "workflow"],
+        [sys.executable, "-m", "hatpin"],
         capture_output=True, text=True,
     )
     # Should print help and exit cleanly

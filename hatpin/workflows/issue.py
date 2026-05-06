@@ -26,19 +26,19 @@ from corvidae.tool import Tool
 from corvidae.tools.files import read_file, write_file
 from corvidae.tools.shell import shell
 
-from workflow.types import StageOutcome, StageResult
-from workflow.context import WorkflowContext
-from workflow.stage import Stage
-from workflow.tools.github import (
+from hatpin.types import StageOutcome, StageResult
+from hatpin.context import WorkflowContext
+from hatpin.stage import Stage
+from hatpin.tools.github import (
     make_github_comment_tool,
     make_add_label_tool,
     make_create_pr_tool,
 )
-from workflow.tools.git import (
+from hatpin.tools.git import (
     make_create_branch_tool,
     make_create_worktree_tool,
 )
-from workflow.tools.plan import (
+from hatpin.tools.plan import (
     PlanHolder,
     make_record_plan_tool,
 )

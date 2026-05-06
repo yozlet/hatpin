@@ -16,9 +16,9 @@ from corvidae.llm import LLMClient
 from corvidae.tool import Tool as CorvidaeTool, ToolRegistry, dispatch_tool_call
 from corvidae.turn import run_agent_turn
 
-from workflow.types import StageOutcome, StageResult, ToolCallRecord
-from workflow.context import WorkflowContext
-from workflow.tools.stage_complete import StageCompleteHolder, make_stage_complete_tool
+from hatpin.types import StageOutcome, StageResult, ToolCallRecord
+from hatpin.context import WorkflowContext
+from hatpin.tools.stage_complete import StageCompleteHolder, make_stage_complete_tool
 
 logger = logging.getLogger(__name__)
 

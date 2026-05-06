@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass
 from typing import Literal
 
-from workflow.types import StageOutcome
+from hatpin.types import StageOutcome
 
 logger = logging.getLogger(__name__)
 

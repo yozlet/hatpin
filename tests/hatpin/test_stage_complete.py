@@ -3,7 +3,7 @@
 import pytest
 
 from corvidae.tool import Tool
-from workflow.tools.stage_complete import StageCompleteHolder, make_stage_complete_tool
+from hatpin.tools.stage_complete import StageCompleteHolder, make_stage_complete_tool
 
 
 def test_holder_starts_empty():
