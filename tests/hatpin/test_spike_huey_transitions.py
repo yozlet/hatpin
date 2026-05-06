@@ -1,6 +1,89 @@
+import asyncio
 import json
 
+import pytest
+
 from hatpin.context import WorkflowContext
+
+
+async def test_run_coroutine_sync_with_running_event_loop(tmp_path, monkeypatch):
+    """Async stages must run when the caller already has a loop (no asyncio.run collision)."""
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+
+    from hatpin.workflow_spikes.huey_transitions import create_run, run_coroutine_sync, run_tick
+
+    async def returns_marker() -> str:
+        return "ok-from-async"
+
+    assert run_coroutine_sync(returns_marker()) == "ok-from-async"
+
+    create_run("async-bridge")
+    out = run_tick("async-bridge")
+    assert out.state_id == "coding"
+
+
+def test_run_coroutine_sync_from_plain_sync_context():
+    from hatpin.workflow_spikes.huey_transitions import run_coroutine_sync
+
+    async def answer() -> int:
+        return 7
+
+    assert run_coroutine_sync(answer()) == 7
+
+
+def test_run_coroutine_sync_times_out(monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_ASYNC_STAGE_TIMEOUT", "0.1")
+
+    from hatpin.workflow_spikes.huey_transitions import run_coroutine_sync
+
+    async def slow() -> None:
+        await asyncio.sleep(10)
+
+    with pytest.raises(asyncio.TimeoutError):
+        run_coroutine_sync(slow())
+
+
+async def test_run_coroutine_sync_times_out_with_running_event_loop(monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_ASYNC_STAGE_TIMEOUT", "0.1")
+
+    from hatpin.workflow_spikes.huey_transitions import run_coroutine_sync
+
+    async def slow() -> None:
+        await asyncio.sleep(10)
+
+    with pytest.raises(asyncio.TimeoutError):
+        run_coroutine_sync(slow())
+
+
+def test_run_coroutine_sync_zero_env_disables_cap(monkeypatch):
+    """``HATPIN_SPIKE_ASYNC_STAGE_TIMEOUT=0`` skips wait_for (spike / tests only)."""
+    monkeypatch.setenv("HATPIN_SPIKE_ASYNC_STAGE_TIMEOUT", "0")
+
+    from hatpin.workflow_spikes.huey_transitions import run_coroutine_sync
+
+    async def quick() -> int:
+        await asyncio.sleep(0.01)
+        return 42
+
+    assert run_coroutine_sync(quick()) == 42
+
+
+def test_run_tick_times_out_on_slow_planning_stage(tmp_path, monkeypatch):
+    monkeypatch.setenv("HATPIN_SPIKE_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("HATPIN_SPIKE_ASYNC_STAGE_TIMEOUT", "0.1")
+
+    import hatpin.workflow_spikes.huey_transitions as spike_mod
+
+    async def slow_planning(_ctx):
+        await asyncio.sleep(10)
+
+    monkeypatch.setitem(spike_mod._STAGES, "planning", slow_planning)
+
+    from hatpin.workflow_spikes.huey_transitions import create_run, run_tick
+
+    create_run("slow-plan")
+    with pytest.raises(asyncio.TimeoutError):
+        run_tick("slow-plan")
 
 
 def test_spike_create_run_and_tick_persists_context_and_state(tmp_path, monkeypatch):
